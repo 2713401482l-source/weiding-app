@@ -10,6 +10,7 @@ import {
   GearSix,
   Heart,
   List,
+  LockSimple,
   Moon,
   Pause,
   PencilSimple,
@@ -256,7 +257,6 @@ function StateScenesPage() {
   const { stateId } = useParams();
   const state = getState(stateId);
   const navigate = useNavigate();
-  const [unavailable, setUnavailable] = useState(null);
   return (
     <main className="screen detail-screen">
       <AppHeader title={state.title} back />
@@ -267,9 +267,9 @@ function StateScenesPage() {
       </section>
       <div className="scene-list">
         {state.scenes.map((scene, index) => (
-          <button key={scene} className={index > 0 ? "is-unavailable" : ""} onClick={() => index === 0 ? navigate(`/meditation/${state.id}/${index}`) : setUnavailable(index)}>
+          <button key={scene} disabled={index > 0} className={index > 0 ? "is-unavailable" : ""} onClick={() => navigate(`/meditation/${state.id}/${index}`)}>
             <span>{scene}</span>
-            {index === 0 ? <ArrowRight size={19} /> : <small>{unavailable === index ? "暂未开放" : "即将开放"}</small>}
+            {index === 0 ? <ArrowRight size={19} /> : <small><LockSimple size={13} />即将上线</small>}
           </button>
         ))}
       </div>
@@ -462,7 +462,7 @@ function BurnPage() {
       </div>
       <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => setMode("type")}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => setMode("draw")}>手写</button></div>
       <div className="burn-canvas" onPointerDown={() => mode === "type" && inputRef.current?.focus()}>
-        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" enterKeyHint="done" onCompositionStart={() => { composingRef.current = true; window.clearTimeout(burnTimerRef.current); }} onCompositionEnd={(event) => { composingRef.current = false; const value = event.currentTarget.value; window.clearTimeout(burnTimerRef.current); burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onChange={(event) => { const value = event.target.value; setDraft(value); window.clearTimeout(burnTimerRef.current); if (!composingRef.current) burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(burnTimerRef.current); ignite(); } }} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder="" /> : <HandwritingBurn />}
+        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" enterKeyHint="done" onCompositionStart={() => { composingRef.current = true; window.clearTimeout(burnTimerRef.current); }} onCompositionEnd={(event) => { composingRef.current = false; const value = event.currentTarget.value; window.clearTimeout(burnTimerRef.current); burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onChange={(event) => { const value = event.target.value; setDraft(value); window.clearTimeout(burnTimerRef.current); if (!composingRef.current) burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(burnTimerRef.current); ignite(); } }} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder=" " /> : <HandwritingBurn />}
         {embers.map((ember) => <p className="burn-ember" key={ember.id}>{[...ember.text].map((char, index) => <span key={`${char}-${index}`} style={{ animationDelay: `${index * 28}ms` }}>{char}</span>)}</p>)}
       </div>
     </main>
@@ -531,9 +531,9 @@ function RecordsPage() {
     <main className="screen library-screen">
       <div className="primary-page-mark"><FunctionSeal>时间流转</FunctionSeal></div>
       {!settings.recordsEnabled ? (
-        <div className="empty-state"><ClockCounterClockwise size={28} /><h1>记录目前关闭</h1><p>白境不会自动保存你的体验。你可以在设置中主动开启。</p><Link to="/settings">前往设置</Link></div>
+        <div className="empty-state"><ClockCounterClockwise size={28} /><h1>时间会经过，不必留下痕迹。</h1><p>为了守护你的隐私，白境默认不记录体验。只有你主动开启后，这里才会留下片刻。</p><Link className="empty-cta" to="/settings">前往设置</Link></div>
       ) : records.length === 0 ? (
-        <div className="empty-state"><ClockCounterClockwise size={28} /><h1>还没有记录</h1><p>完成一次体验后，这里会留下状态、时间和反馈，不会保存你在 Burn 中写的内容。</p></div>
+        <div className="empty-state"><ClockCounterClockwise size={28} /><h1>还没有记录</h1><p>等你完成一次状态调整，这里才会留下时间与反馈。你在阅后即焚里写下的内容，始终不会被保存。</p></div>
       ) : (
         <div className="record-list">{records.map((record) => <article key={record.id}><div><strong>{record.type === "encounter" ? "声音盲盒" : getState(record.stateId).title}</strong><span>{new Date(record.at).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div><button onClick={() => setRecords((items) => items.filter((item) => item.id !== record.id))} aria-label="删除记录"><Trash size={18} /></button></article>)}</div>
       )}
@@ -570,6 +570,7 @@ function SettingsPage() {
     <main className="screen settings-screen">
       <div className="primary-page-mark"><FunctionSeal>设置</FunctionSeal></div>
       <section className="menu-hub" aria-label="其他功能">
+        <h2>基础功能</h2>
         <Link to="/encounter"><DiceThree size={20} /><span><strong>声音盲盒</strong><small>让此刻随机遇见一段声音</small></span><ArrowRight size={16} /></Link>
         <Link to="/favorites"><Heart size={20} /><span><strong>收藏</strong><small>保留想再次使用的内容</small></span><ArrowRight size={16} /></Link>
         <Link to="/emotion-index"><BookOpenText size={20} /><span><strong>情绪索引</strong><small>阅读克制、非诊断式的心理词条</small></span><ArrowRight size={16} /></Link>
@@ -622,7 +623,7 @@ function PersistentTabBar() {
         const active = location.pathname === path;
         return <Link key={path} to={path} className={active ? "is-active" : ""} aria-current={active ? "page" : undefined}>
           {active && <motion.span className="tab-active-surface" layoutId="active-tab" transition={{ type: "spring", stiffness: 360, damping: 34 }} />}
-          <Icon size={20} /><span>{label}</span>
+          <Icon size={21} weight="regular" /><span>{label}</span>
         </Link>;
       })}
     </nav>

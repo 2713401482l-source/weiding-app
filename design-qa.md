@@ -1,32 +1,38 @@
-# Design QA — Persistent shell and content expansion
+# 《白境》商用视觉优化 QA
 
-## Scope
+## 本轮范围
 
-- Four-tab persistent app shell.
-- Programmatic ambient texture and unified selected-state treatment.
-- Selection-only vertical rail.
-- Typed/handwritten Burn modes.
-- 24-entry psychology knowledge index.
-- Six representative real audio tracks.
+- 全站字体职能、32px 栅格、安全区与视觉层级。
+- 四项常驻 TabBar、设置分组卡片、分段选择器和开关。
+- 状态选择、场景列表、时间流转空状态、阅后即焚、冥想播放页。
+- 浅色/深色主题、触控热区、横向溢出及关键交互。
 
-## Verification
+## 三轮自主检查
 
-- Unit tests: 2/2 passed.
-- Production build: passed.
-- Browser checks:
-  - primary routes show exactly one persistent tab bar;
-  - meditation and knowledge detail routes show no tab bar;
-  - first state tap selects without navigation and second tap enters scenes;
-  - 6 knowledge groups and 24 entries render with no meditation links;
-  - typed Burn ignites after inactivity and handwriting Canvas mounts;
-  - tested routes have no horizontal overflow or console errors.
-- Audio assets: all six MP3 derivatives return HTTP 200; WAV masters were not modified.
+### 第一轮：逐页视觉
 
-## Findings
+- 截图检查状态调整、设置、时间流转、阅后即焚、场景和冥想页面。
+- 修正场景页“即将上线”标签超出内容栅格的问题。
+- 确认状态文字与右侧圆点中心线精确对齐，TabBar 常驻且不遮挡核心内容。
 
-- P0: none.
-- P1: none.
-- P2: none.
-- P3: automated in-app browser does not expose audible playback state, so final acoustic output should also be listened to once on a physical phone; source files, loading path and controls are wired.
+### 第二轮：主题与状态
 
-final result: passed
+- 截图对比浅色、深色的状态选中、设置卡片和不可用场景。
+- 确认深浅主题使用同一套轻量代码渲染，不再依赖宣纸图片。
+- 加强未选中内容、轨道和不可用标签的可辨识度。
+
+### 第三轮：交互与无障碍
+
+- 实测滑杆松手只改变状态，不自动进入场景。
+- 实测阅后即焚点击聚焦、键入、停顿触发焚烧均正常。
+- 修正键入/手写切换和设置开关的触控热区，最终均不小于 44px。
+- 检查 9 条核心路由：无横向溢出，主结构均存在；冥想页按要求不显示 TabBar。
+
+## 自动验证
+
+- 单元测试：2/2 通过。
+- 生产构建：通过。
+- P0/P1/P2：无未解决项。
+- 说明：自动浏览器无法判断真实扬声器听感，发布后仍建议在一台实体手机上试听六段音频的响度一致性。
+
+最终结果：通过。
