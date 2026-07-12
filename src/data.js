@@ -1,0 +1,152 @@
+export const states = [
+  {
+    id: "rumination",
+    title: "反复纠结",
+    term: "思维反刍",
+    description: "已经发生的事情、表达或感受，仍在脑中反复出现。",
+    affirmation: "这件事可以先停在这里，我不必现在得到答案。",
+    audio: "/audio/rumination.mp3",
+    scenes: [
+      "一段对话总在脑中重播。",
+      "我反复猜测别人当时真正的意思。",
+      "我总在重播一个让我后悔的决定。",
+      "我知道事情过去了，但脑子停不下来。",
+      "我不断寻找一个也许不存在的解释。",
+      "我想先把这段反复的念头放远一点。",
+    ],
+  },
+  {
+    id: "anticipation",
+    title: "对未来没底",
+    term: "预期担忧",
+    description: "面对尚未确定的结果或即将发生的事情，很难把注意力从未来拉回来。",
+    affirmation: "未来还没有发生，此刻我只需要照顾下一步。",
+    audio: "/audio/anticipation.mp3",
+    scenes: [
+      "考试、面试或汇报前没底。",
+      "我担心明天会发生不好的事情。",
+      "我脑中一直排演最糟的可能。",
+      "事情还没开始，我已经感到很紧绷。",
+      "不确定让我很难休息。",
+      "我想把注意力暂时带回现在。",
+    ],
+  },
+  {
+    id: "overload",
+    title: "思绪过载",
+    term: "认知与任务过载",
+    description: "事情、信息和要求同时占用注意力，难以排序、选择或判断下一步。",
+    affirmation: "我不需要同时处理一切，只留下眼前的一件事。",
+    audio: "/audio/overload.mp3",
+    scenes: [
+      "事情堆在一起，不知道先做什么。",
+      "消息和要求不断进来，我无法集中。",
+      "每件事都像很重要，我难以取舍。",
+      "我脑子很满，却什么也没推进。",
+      "我不断切换任务，越来越疲惫。",
+      "我需要先让信息安静下来。",
+    ],
+  },
+  {
+    id: "blocked",
+    title: "难以启动",
+    term: "行动启动受阻",
+    description: "当前可能仍有一定精力，但任务没有真正进入执行。",
+    affirmation: "开始可以很小，小到只需要一次呼吸和一个动作。",
+    audio: "/audio/blocked.mp3",
+    scenes: [
+      "一直在准备，却没有进入执行。",
+      "任务并不难，但我一直在回避它。",
+      "我在准备和真正开始之间打转。",
+      "我想做事，却像被卡在原地。",
+      "想到完整任务，我就失去了行动感。",
+      "我愿意尝试一个小到不会失败的开头。",
+    ],
+  },
+  {
+    id: "aftershock",
+    title: "情绪未平",
+    term: "情绪余波",
+    description: "事件已经结束或暂时停止，但情绪或身体反应仍在影响现在。",
+    affirmation: "事情停下了，我的身体也可以慢慢停下来。",
+    audio: "/audio/aftershock.mp3",
+    scenes: [
+      "没得到期待的回应，很失落。",
+      "刚才的事情让我身体一直发紧。",
+      "我表面平静了，心里还在翻涌。",
+      "我离开了现场，却仍像身处其中。",
+      "情绪退了一些，但还没有真正落下。",
+      "我想给身体一点恢复的时间。",
+    ],
+  },
+  {
+    id: "low-energy",
+    title: "精力不足",
+    term: "可用能量不足",
+    description: "身体、注意力或动机资源不足，当前需要先判断是恢复，还是轻量启动。",
+    affirmation: "能量不足不是失败，我可以选择恢复，也可以只走一小步。",
+    audio: "/audio/low-energy.mp3",
+    scenes: [
+      "刚醒来，状态还没有启动。",
+      "我想休息，却又为休息感到内疚。",
+      "注意力很散，身体也没有力气。",
+      "我分不清自己需要休息还是需要开始。",
+      "我今天已经消耗了很多。",
+      "我想先确认此刻真正需要什么。",
+    ],
+  },
+];
+
+export const emotionTerms = [
+  { term: "思维反刍", text: "注意力反复回到已经发生的内容。它不等于认真思考，通常不会带来新的信息。", stateId: "rumination" },
+  { term: "预期担忧", text: "思绪持续尝试预测尚未发生的结果，以获得确定感。", stateId: "anticipation" },
+  { term: "认知负荷", text: "工作记忆同时承载的信息有限，超过容量时，排序和判断都会变难。", stateId: "overload" },
+  { term: "行动启动", text: "从计划切换到第一个实际动作，需要单独的注意力和动机资源。", stateId: "blocked" },
+  { term: "情绪余波", text: "事件结束后，神经系统和身体反应可能仍需要时间回到较稳定状态。", stateId: "aftershock" },
+  { term: "可用能量", text: "此刻可以调动的身体、注意力与动机资源，而不是对能力或意志的评价。", stateId: "low-energy" },
+];
+
+export const knowledgeTopics = [
+  { group: "想法与注意", items: [
+    { term: "思维反刍", summary: "反复回到已经发生的事，却很少产生新信息。", myth: "它不等于认真复盘。", evidence: "Level A", source: "Aldao 等，2010；Flavell，1979" },
+    { term: "元认知", summary: "注意到“我正在想什么”，而不是自动相信每一个念头。", myth: "它不是强迫自己停止思考。", evidence: "Level E", source: "Flavell，1979" },
+    { term: "工作记忆", summary: "我们能同时留在脑中处理的信息容量有限。", myth: "超载不代表能力不足。", evidence: "Level B", source: "Baddeley，1992" },
+    { term: "执行功能", summary: "抑制、切换和工作记忆共同支持下一步行动。", myth: "卡住不总是意志薄弱。", evidence: "Level B", source: "Diamond，2013" },
+  ]},
+  { group: "担忧与不确定", items: [
+    { term: "预期担忧", summary: "思绪持续预测未来，希望先获得确定感。", myth: "担心更多不一定准备得更好。", evidence: "Level B", source: "Carleton，2016" },
+    { term: "不确定性耐受", summary: "允许部分未知存在，同时仍能采取有限行动。", myth: "它不是对风险不负责。", evidence: "Level B", source: "Carleton，2016" },
+    { term: "安全行为", summary: "反复确认或过度准备能短时减压，也可能维持担忧。", myth: "让人安心的行为不一定长期有益。", evidence: "Level E", source: "Rapee 与 Heimberg，1997" },
+    { term: "灾难化", summary: "注意力更容易被最坏结果吸引，并高估其概率或代价。", myth: "识别它不代表否认真实风险。", evidence: "Level B", source: "Hofmann 等，2012" },
+  ]},
+  { group: "行动与能量", items: [
+    { term: "行动启动", summary: "从准备切换到第一个动作，本身需要认知资源。", myth: "知道该做什么不等于能立即开始。", evidence: "Level B", source: "Diamond，2013" },
+    { term: "行为激活", summary: "先接触小行动和环境反馈，再等待动力出现。", myth: "它不是逼自己保持忙碌。", evidence: "Level A", source: "Ekers 等，2014" },
+    { term: "实施意图", summary: "把“想做”改写成“如果遇到 X，我就做 Y”。", myth: "计划句不是执行保证书。", evidence: "Level E", source: "Gollwitzer，1999" },
+    { term: "可用能量", summary: "此刻能调用的身体、注意和动机资源。", myth: "它不是对个人能力的评价。", evidence: "Level B", source: "McEwen，1998；Diamond，2013" },
+  ]},
+  { group: "情绪调节", items: [
+    { term: "情绪调节", summary: "改变情绪发生、持续或表达方式的一组过程。", myth: "目标不是控制掉所有情绪。", evidence: "Level E", source: "Gross，1998" },
+    { term: "认知重评", summary: "改变对情境意义的理解，从而影响情绪反应。", myth: "它不是强迫乐观。", evidence: "Level A", source: "Buhle 等，2014" },
+    { term: "接纳", summary: "允许不舒服存在，同时保留行动选择。", myth: "接纳不等于赞同或放弃改变。", evidence: "Level B", source: "Chawla 与 Ostafin，2007" },
+    { term: "表达抑制", summary: "减少外在表达，但内部体验未必同步下降。", myth: "它并非任何场景都不好。", evidence: "Level D", source: "Gross 与 John，2003" },
+  ]},
+  { group: "身体与恢复", items: [
+    { term: "压力评估", summary: "压力来自情境要求与可用资源之间的关系。", myth: "压力并非事件的固定属性。", evidence: "Level E", source: "Lazarus 与 Folkman，1984" },
+    { term: "适应性负荷", summary: "长期应对压力可能累积身体系统成本。", myth: "它不能用于自我诊断。", evidence: "Level B", source: "McEwen，1998" },
+    { term: "情绪余波", summary: "事件结束后，身体和注意仍可能保持激活。", myth: "恢复较慢不代表你处理失败。", evidence: "Level E", source: "Gross，1998" },
+    { term: "呼吸与放松", summary: "缓慢呼吸可能帮助部分人降低当下唤醒水平。", myth: "它不是对所有压力的万能答案。", evidence: "Public Resource", source: "NIH NCCIH；NHS" },
+  ]},
+  { group: "理解与自我关系", items: [
+    { term: "情绪粒度", summary: "更精确地区分和命名正在经历的感受。", myth: "名称越多不等于理解越深。", evidence: "Level B", source: "Kashdan 等，2015" },
+    { term: "自我关怀", summary: "困难时减少自我攻击，并保持对现实的诚实。", myth: "它不是放纵或降低标准。", evidence: "Level A", source: "Kirby 等，2017；Neff，2011" },
+    { term: "自我肯定", summary: "受威胁时重新连接更广泛的重要价值。", myth: "它不是重复漂亮口号。", evidence: "Level A", source: "Cohen 与 Sherman，2014" },
+    { term: "心理灵活性", summary: "在不舒服仍存在时，根据情境和价值调整行动。", myth: "它不是永远保持平静。", evidence: "Level B", source: "Kashdan 与 Rottenberg，2010" },
+  ]},
+];
+
+export const encounterTracks = [
+  { id: "morning-mist", title: "晨雾后的风", note: "稀疏、明亮，留一点醒来的空间", duration: 95 },
+  { id: "rain-window", title: "雨落在远处", note: "均匀、缓慢，不要求你跟随", duration: 110 },
+  { id: "night-tide", title: "夜潮靠近又退开", note: "低沉、稳定，适合关掉更多念头", duration: 120 },
+];
