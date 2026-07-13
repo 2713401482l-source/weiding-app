@@ -2,7 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS ? "/baijing-app/" : "/",
+  // Relative asset URLs keep the static build portable and prevent a blank
+  // screen when GitHub Pages serves the project from a repository subpath.
+  base: "./",
   optimizeDeps: {
     include: ["react", "react-dom/client"],
   },
