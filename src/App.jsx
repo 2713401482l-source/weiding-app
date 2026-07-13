@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowClockwise,
+  ArrowCounterClockwise,
   BookOpenText,
   CaretDown,
   Check,
@@ -15,8 +17,7 @@ import {
   Pause,
   PencilSimple,
   Play,
-  SpeakerHigh,
-  SpeakerSlash,
+  SlidersHorizontal,
   Sun,
   Trash,
   Waveform,
@@ -49,6 +50,7 @@ function useAppData() {
     voiceVolume: 0.72,
     ambienceVolume: 0.42,
     weather: false,
+    fullscreen: false,
   });
   return { favorites, setFavorites, records, setRecords, settings, setSettings };
 }
@@ -69,7 +71,17 @@ function getState(id) {
 }
 
 function FunctionSeal({ children }) {
-  return <span className="function-seal"><span aria-hidden="true">印</span>白境-{children}</span>;
+  return <span className="function-seal"><span aria-hidden="true">白</span><b>-{children}</b></span>;
+}
+
+function TopLevelIntro({ title, subtitle, section }) {
+  return (
+    <section className="top-level-intro">
+      <h1>{title.map((line) => <span key={line}>{line}</span>)}</h1>
+      <p>{subtitle}</p>
+      <FunctionSeal>{section}</FunctionSeal>
+    </section>
+  );
 }
 
 function AppHeader({ title = "白境", back = false, onMenu }) {
@@ -203,11 +215,7 @@ function CanvasPage() {
 
   return (
     <main className="screen canvas-screen">
-      <section className="canvas-intro">
-        <h1>此刻，你更接近哪种状态？</h1>
-        <p>不必判断得很准确，只选最接近的感受。</p>
-        <FunctionSeal>状态调整</FunctionSeal>
-      </section>
+      <TopLevelIntro title={["此刻，你更接近", "哪种状态？"]} subtitle="不必判断得很准确，只选最接近的感受。" section="状态调整" />
 
       <section className="state-selector vertical" aria-label="选择当前状态">
         <div className="state-list" role="listbox" aria-activedescendant={`state-${selected.id}`}>
@@ -228,6 +236,7 @@ function CanvasPage() {
         </div>
         <div
           ref={railRef}
+          data-feedback="none"
           className={`state-rail ${dragging ? "is-dragging" : ""}`}
           role="slider"
           tabIndex={0}
@@ -279,9 +288,9 @@ function StateScenesPage() {
 
 function useGuidedAudio(src, volume) {
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -289,14 +298,16 @@ function useGuidedAudio(src, volume) {
     element.preload = "metadata";
     element.volume = volume;
     element.addEventListener("loadedmetadata", () => setDuration(element.duration || 0));
-    element.addEventListener("timeupdate", () => setProgress(element.duration ? element.currentTime / element.duration * 100 : 0));
+    element.addEventListener("timeupdate", () => {
+      setCurrentTime(element.currentTime || 0);
+      setProgress(element.duration ? element.currentTime / element.duration * 100 : 0);
+    });
     element.addEventListener("ended", () => setPlaying(false));
     audioRef.current = element;
     return () => { element.pause(); element.src = ""; };
   }, [src]);
 
   useEffect(() => { if (audioRef.current) audioRef.current.volume = volume; }, [volume]);
-  useEffect(() => { if (audioRef.current) audioRef.current.muted = muted; }, [muted]);
 
   const play = () => {
     audioRef.current?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
@@ -306,24 +317,42 @@ function useGuidedAudio(src, volume) {
     audioRef.current?.pause();
     setPlaying(false);
   };
-  return { playing, play, pause, muted, setMuted, progress, duration };
+  const seekBy = (seconds) => {
+    const element = audioRef.current;
+    if (!element) return;
+    const next = Math.max(0, Math.min(element.duration || duration || 0, element.currentTime + seconds));
+    element.currentTime = next;
+    setCurrentTime(next);
+    setProgress(element.duration ? next / element.duration * 100 : 0);
+  };
+  return { playing, play, pause, progress, duration, currentTime, seekBy };
 }
 
 function MeditationPage() {
   const { stateId, sceneIndex } = useParams();
   const state = getState(stateId);
-  const scene = state.scenes[Number(sceneIndex) || 0];
   const navigate = useNavigate();
-  const { favorites, setFavorites, settings, setSettings } = useData();
+  const { settings } = useData();
   const audio = useGuidedAudio(state.audio, settings.voiceVolume);
-  const favorite = favorites.includes(state.id);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [controlActivity, setControlActivity] = useState(0);
+  const hideControlsRef = useRef(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (audio.progress >= 99.8) navigate(`/completion/${state.id}`);
   }, [audio.progress, navigate, state.id]);
 
-  const toggleFavorite = () => {
-    setFavorites((items) => favorite ? items.filter((id) => id !== state.id) : [...items, state.id]);
+  useEffect(() => {
+    window.clearTimeout(hideControlsRef.current);
+    if (controlsOpen) hideControlsRef.current = window.setTimeout(() => setControlsOpen(false), 4000);
+    return () => window.clearTimeout(hideControlsRef.current);
+  }, [controlsOpen, controlActivity]);
+
+  const keepControlsOpen = (action) => {
+    action?.();
+    setControlsOpen(true);
+    setControlActivity((value) => value + 1);
   };
 
   return (
@@ -339,132 +368,166 @@ function MeditationPage() {
         <span className="tap-hint">轻触{audio.playing ? "暂停" : "继续"}</span>
       </button>
       <div className="progress-track" aria-label={`播放进度 ${Math.round(audio.progress)}%`}><span style={{ width: `${audio.progress}%` }} /></div>
-      <div className="player-controls">
-        <button className="icon-button raised" onClick={() => audio.setMuted(!audio.muted)} aria-label={audio.muted ? "取消静音" : "静音"}>
-          {audio.muted ? <SpeakerSlash size={22} /> : <SpeakerHigh size={22} />}
-        </button>
-        <button className="play-button" onClick={() => audio.playing ? audio.pause() : audio.play()} aria-label={audio.playing ? "暂停" : "播放"}>
-          {audio.playing ? <Pause size={26} weight="fill" /> : <Play size={26} weight="fill" />}
-        </button>
-        <button className={`icon-button raised ${favorite ? "is-active" : ""}`} onClick={toggleFavorite} aria-label={favorite ? "取消收藏" : "收藏"}>
-          <Heart size={22} weight={favorite ? "fill" : "regular"} />
+      <div className="immersive-control-area">
+        <AnimatePresence initial={false}>
+          {controlsOpen && (
+            <motion.div key="panel" className="immersive-controls" role="group" aria-label="播放控制" initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reduceMotion ? { opacity: 0, transition: { duration: .1 } } : { opacity: 0, y: 8, scale: .99, transition: { duration: .18, ease: [.4, 0, 1, 1] } }} transition={{ duration: reduceMotion ? .1 : .26, ease: [0.22, 1, 0.36, 1] }}>
+              <div className="transport-controls">
+                <button onClick={() => keepControlsOpen(() => audio.seekBy(-15))} aria-label="后退15秒"><ArrowCounterClockwise size={23} /><span>15</span></button>
+                <button className="play-button" onClick={() => keepControlsOpen(() => audio.playing ? audio.pause() : audio.play())} aria-label={audio.playing ? "暂停" : "播放"}>
+                  {audio.playing ? <Pause size={25} weight="fill" /> : <Play size={25} weight="fill" />}
+                </button>
+                <button onClick={() => keepControlsOpen(() => audio.seekBy(15))} aria-label="前进15秒"><ArrowClockwise size={23} /><span>15</span></button>
+              </div>
+              <button className="end-session-action" data-feedback="confirm" onClick={() => navigate(`/completion/${state.id}`)}>提前结束本次体验</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <button className={`control-reveal ${controlsOpen ? "is-open" : ""}`} onClick={() => setControlsOpen((open) => !open)} aria-label={controlsOpen ? "收起播放控制" : "显示播放控制"} aria-expanded={controlsOpen}>
+          <SlidersHorizontal size={21} />
+          <span>{controlsOpen ? "收起控制" : "播放控制"}</span>
         </button>
       </div>
-      <button className="text-action" onClick={() => navigate(`/completion/${state.id}`)}>提前结束并记录感受</button>
     </main>
   );
 }
 
 function CompletionPage() {
   const { stateId } = useParams();
-  const state = getState(stateId);
   const navigate = useNavigate();
   const { settings, setRecords } = useData();
   const [feedback, setFeedback] = useState(null);
+  const recordedRef = useRef(false);
   const options = [
     ["steadier", "稍微稳定一些"],
     ["same", "没有明显变化"],
     ["worse", "感觉更不舒服"],
   ];
-  const finish = () => {
-    if (settings.recordsEnabled && feedback) {
-      setRecords((items) => [{ id: crypto.randomUUID(), type: "meditation", stateId, feedback, at: new Date().toISOString(), duration: 180 }, ...items]);
-    }
-    navigate("/");
+  const suggestions = {
+    steadier: "把这一点稳定留在此刻就好。",
+    same: "没有变化也没关系，你已经停下来照看了自己。",
+    worse: "先离开这段体验，给自己一点安静和空间。",
   };
+  const chooseFeedback = (value) => {
+    if (feedback) return;
+    setFeedback(value);
+    if (settings.recordsEnabled && !recordedRef.current) {
+      recordedRef.current = true;
+      setRecords((items) => [{ id: crypto.randomUUID(), type: "meditation", stateId, feedback: value, at: new Date().toISOString(), duration: 180 }, ...items]);
+    }
+  };
+  useEffect(() => {
+    if (!feedback) return undefined;
+    const timer = window.setTimeout(() => navigate("/"), 1500);
+    return () => window.clearTimeout(timer);
+  }, [feedback, navigate]);
   return (
     <main className="screen completion-screen">
       <AppHeader title="完成" back />
       <div className="completion-mark"><Check size={28} /></div>
       <h1>现在，有稍微稳定一些吗？</h1>
       <p>没有标准答案，只记录此刻的变化。</p>
-      <div className="feedback-options">
-        {options.map(([value, label]) => (
-          <button key={value} className={feedback === value ? "is-selected" : ""} onClick={() => setFeedback(value)}>
-            <span>{label}</span>{feedback === value && <Check size={18} />}
-          </button>
-        ))}
-      </div>
-      {feedback && (
-        <div className="next-suggestion">
-          <span>接下来</span>
-          <p>{feedback === "steadier" ? "可以回到首页，让这次体验停在这里。" : feedback === "same" ? "可以换一个具体场景，或先去写下并放下。" : "先停止体验、关掉声音，给自己一点没有任务的空间。"}</p>
-        </div>
-      )}
-      <button className="primary-action" disabled={!feedback} onClick={finish}>返回白境 <ArrowRight size={21} /></button>
-      <button className="text-action" onClick={() => navigate(`/states/${state.id}`)}>继续看看其他场景</button>
+      <AnimatePresence mode="wait" initial={false}>
+        {!feedback ? (
+          <motion.div key="options" className="feedback-options" exit={{ opacity: 0, y: -6 }} transition={{ duration: .16 }}>
+            {options.map(([value, label]) => (
+              <button key={value} data-feedback="confirm" onClick={() => chooseFeedback(value)}><span>{label}</span></button>
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div key="suggestion" className="gentle-suggestion" role="status" aria-live="polite" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .24, ease: [0.22, 1, 0.36, 1] }}>
+            <Check size={20} />
+            <p>{suggestions[feedback]}</p>
+            <span>正在回到状态调整</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
 
-function HandwritingBurn() {
+function HandwritingBurn({ burning, onContent, onBurnComplete }) {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
-  const timerRef = useRef(null);
   const burnFrameRef = useRef(null);
+  const ratioRef = useRef(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    ratioRef.current = ratio;
     canvas.width = Math.round(rect.width * ratio); canvas.height = Math.round(rect.height * ratio);
     const context = canvas.getContext("2d"); context.scale(ratio, ratio); context.lineCap = "round"; context.lineJoin = "round";
-    return () => { window.clearTimeout(timerRef.current); cancelAnimationFrame(burnFrameRef.current); };
+    return () => cancelAnimationFrame(burnFrameRef.current);
   }, []);
 
   const point = (event) => { const rect = canvasRef.current.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: event.pressure || .45 }; };
-  const ignite = () => {
-    const canvas = canvasRef.current; const context = canvas.getContext("2d"); const rect = canvas.getBoundingClientRect();
+  useEffect(() => {
+    if (!burning) return undefined;
+    const canvas = canvasRef.current; const context = canvas.getContext("2d");
+    const snapshot = context.getImageData(0, 0, canvas.width, canvas.height);
+    const seeds = Array.from({ length: 16 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, delay: Math.random() * .38, size: (70 + Math.random() * 110) * ratioRef.current }));
     const start = performance.now();
     const burn = (time) => {
-      const progress = Math.min(1, (time - start) / 2300);
-      context.save(); context.globalCompositeOperation = "destination-out";
-      const count = 10 + Math.round(progress * 22);
-      for (let i = 0; i < count; i += 1) {
-        const x = (progress * rect.width) + (Math.random() - .5) * 80;
-        const y = Math.random() * rect.height;
-        context.beginPath(); context.arc(x, y, 3 + Math.random() * 16, 0, Math.PI * 2); context.fill();
-      }
-      context.restore();
-      context.save(); context.globalCompositeOperation = "source-atop"; context.strokeStyle = `rgba(205,76,42,${1-progress})`; context.shadowColor = "#df6844"; context.shadowBlur = 12; context.lineWidth = 2; context.beginPath(); context.moveTo(progress * rect.width - 12, 0); context.lineTo(progress * rect.width + 8, rect.height); context.stroke(); context.restore();
-      if (progress < 1) burnFrameRef.current = requestAnimationFrame(burn); else context.clearRect(0, 0, rect.width, rect.height);
+      const progress = Math.min(1, (time - start) / 2600);
+      context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.putImageData(snapshot, 0, 0);
+      seeds.forEach((seed) => {
+        const local = Math.max(0, Math.min(1, (progress - seed.delay) / (1 - seed.delay)));
+        if (!local) return;
+        const eased = 1 - Math.pow(1 - local, 2.4); const radius = eased * seed.size;
+        context.save(); context.globalCompositeOperation = "source-atop";
+        const glow = context.createRadialGradient(seed.x, seed.y, Math.max(0, radius - 14 * ratioRef.current), seed.x, seed.y, radius + 10 * ratioRef.current);
+        glow.addColorStop(0, "rgba(66,49,43,0)"); glow.addColorStop(.62, "rgba(95,57,43,.54)"); glow.addColorStop(.84, "rgba(224,93,51,.92)"); glow.addColorStop(1, "rgba(245,171,103,0)");
+        context.fillStyle = glow; context.fillRect(0, 0, canvas.width, canvas.height); context.restore();
+        context.save(); context.globalCompositeOperation = "destination-out"; context.beginPath(); context.arc(seed.x, seed.y, Math.max(0, radius - 8 * ratioRef.current), 0, Math.PI * 2); context.fill(); context.restore();
+      });
+      if (progress < 1) burnFrameRef.current = requestAnimationFrame(burn);
+      else { context.clearRect(0, 0, canvas.width, canvas.height); context.setTransform(ratioRef.current, 0, 0, ratioRef.current, 0, 0); onBurnComplete(); }
     };
     burnFrameRef.current = requestAnimationFrame(burn);
-  };
+    return () => cancelAnimationFrame(burnFrameRef.current);
+  }, [burning, onBurnComplete]);
   const down = (event) => { drawingRef.current = true; canvasRef.current.setPointerCapture(event.pointerId); const context = canvasRef.current.getContext("2d"); const p = point(event); context.beginPath(); context.moveTo(p.x, p.y); };
-  const move = (event) => { if (!drawingRef.current) return; const context = canvasRef.current.getContext("2d"); const p = point(event); context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink"); context.lineWidth = 1.5 + p.pressure * 4; context.lineTo(p.x, p.y); context.stroke(); };
-  const up = () => { drawingRef.current = false; window.clearTimeout(timerRef.current); timerRef.current = window.setTimeout(ignite, 1500); };
-  return <canvas ref={canvasRef} className="handwriting-canvas" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} aria-label="手写区域，停止落笔后自动焚烧" />;
+  const move = (event) => { if (!drawingRef.current || burning) return; const context = canvasRef.current.getContext("2d"); const p = point(event); context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink"); context.lineWidth = 1.5 + p.pressure * 4; context.lineTo(p.x, p.y); context.stroke(); onContent(true); };
+  const up = () => { drawingRef.current = false; };
+  return <canvas ref={canvasRef} className="handwriting-canvas" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} aria-label="手写区域" />;
 }
 
 function BurnPage() {
   const [mode, setMode] = useState("type");
   const [draft, setDraft] = useState("");
   const [embers, setEmbers] = useState([]);
+  const [drawingPresent, setDrawingPresent] = useState(false);
+  const [burning, setBurning] = useState(false);
+  const [anchor, setAnchor] = useState({ x: 24, y: 34 });
   const inputRef = useRef(null);
-  const burnTimerRef = useRef(null);
-  const composingRef = useRef(false);
   const ignite = (value = draft) => {
     const clean = value.trim();
-    if (!clean) return;
+    if (mode === "draw") { if (!drawingPresent || burning) return; setBurning(true); return; }
+    if (!clean || burning) return;
     const id = crypto.randomUUID();
-    setEmbers((items) => [...items, { id, text: clean }]);
+    const origins = Array.from({ length: Math.min(6, Math.max(3, Math.ceil(clean.length / 12))) }, () => Math.floor(Math.random() * clean.length));
+    const chars = [...clean].map((char, index) => ({ char, delay: Math.min(...origins.map((origin) => Math.abs(origin - index) * (22 + Math.random() * 18))) + Math.random() * 180, driftX: Math.round((Math.random() - .5) * 28), driftY: -12 - Math.round(Math.random() * 30), rotate: Math.round((Math.random() - .5) * 16) }));
+    setBurning(true); setEmbers([{ id, chars }]);
     setDraft("");
-    window.setTimeout(() => setEmbers((items) => items.filter((item) => item.id !== id)), 2800);
+    window.setTimeout(() => { setEmbers([]); setBurning(false); }, 3000);
   };
-  useEffect(() => () => window.clearTimeout(burnTimerRef.current), []);
+  const placeCursor = (event) => {
+    if (mode !== "type" || draft || burning || event.target.closest("button")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setAnchor({ x: Math.max(12, Math.min(rect.width - 180, event.clientX - rect.left)), y: Math.max(18, Math.min(rect.height - 120, event.clientY - rect.top)) });
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
   return (
     <main className="screen burn-screen">
-      <div className="primary-page-mark"><FunctionSeal>阅后即焚</FunctionSeal></div>
-      <div className="burn-copy">
-        <h1>让它暂时离开脑海。</h1>
-        <span>不会保存，也不会发送</span>
+      <TopLevelIntro title={["让它暂时", "离开脑海。"]} subtitle="不会保存，也不会发送。" section="阅后即焚" />
+      <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => { setMode("type"); setBurning(false); setDrawingPresent(false); }}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => { setMode("draw"); setBurning(false); setDrawingPresent(false); }}>手写</button></div>
+      <div className={`burn-canvas ${burning ? "is-burning" : ""}`} onPointerDown={placeCursor}>
+        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder="轻触任意位置，写下一句。" style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px` }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); }} />}
+        {embers.map((ember) => <p className="burn-ember" key={ember.id} style={{ left: anchor.x, top: anchor.y }}>{ember.chars.map((item, index) => <span key={`${item.char}-${index}`} style={{ animationDelay: `${item.delay}ms`, "--drift-x": `${item.driftX}px`, "--drift-y": `${item.driftY}px`, "--burn-rotate": `${item.rotate}deg` }}>{item.char}</span>)}</p>)}
       </div>
-      <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => setMode("type")}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => setMode("draw")}>手写</button></div>
-      <div className="burn-canvas" onPointerDown={() => mode === "type" && inputRef.current?.focus()}>
-        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" enterKeyHint="done" onCompositionStart={() => { composingRef.current = true; window.clearTimeout(burnTimerRef.current); }} onCompositionEnd={(event) => { composingRef.current = false; const value = event.currentTarget.value; window.clearTimeout(burnTimerRef.current); burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onChange={(event) => { const value = event.target.value; setDraft(value); window.clearTimeout(burnTimerRef.current); if (!composingRef.current) burnTimerRef.current = window.setTimeout(() => ignite(value), 1500); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(burnTimerRef.current); ignite(); } }} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder=" " /> : <HandwritingBurn />}
-        {embers.map((ember) => <p className="burn-ember" key={ember.id}>{[...ember.text].map((char, index) => <span key={`${char}-${index}`} style={{ animationDelay: `${index * 28}ms` }}>{char}</span>)}</p>)}
-      </div>
+      <AnimatePresence>{((mode === "type" && draft.trim()) || (mode === "draw" && drawingPresent)) && !burning && <motion.button className="ignite-action" data-feedback="confirm" onClick={() => ignite()} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}>让它消散</motion.button>}</AnimatePresence>
     </main>
   );
 }
@@ -529,9 +592,9 @@ function RecordsPage() {
   const { records, setRecords, settings } = useData();
   return (
     <main className="screen library-screen">
-      <div className="primary-page-mark"><FunctionSeal>时间流转</FunctionSeal></div>
+      <TopLevelIntro title={["时间会经过，", "不必留下痕迹。"]} subtitle="记录默认关闭，只有你主动开启后才会留下片刻。" section="时间流转" />
       {!settings.recordsEnabled ? (
-        <div className="empty-state"><ClockCounterClockwise size={28} /><h1>时间会经过，不必留下痕迹。</h1><p>为了守护你的隐私，白境默认不记录体验。只有你主动开启后，这里才会留下片刻。</p><Link className="empty-cta" to="/settings">前往设置</Link></div>
+        <div className="empty-state records-empty"><ClockCounterClockwise size={28} /><p>白境会守护你的隐私。需要时，你可以在设置中主动开启记录。</p><Link className="empty-cta" to="/settings">前往设置</Link></div>
       ) : records.length === 0 ? (
         <div className="empty-state"><ClockCounterClockwise size={28} /><h1>还没有记录</h1><p>等你完成一次状态调整，这里才会留下时间与反馈。你在阅后即焚里写下的内容，始终不会被保存。</p></div>
       ) : (
@@ -558,7 +621,24 @@ function Toggle({ checked, onChange, label }) {
 
 function SettingsPage() {
   const { settings, setSettings, setRecords, setFavorites } = useData();
+  const [fullscreenActive, setFullscreenActive] = useState(Boolean(document.fullscreenElement));
   const update = (key, value) => setSettings({ ...settings, [key]: value });
+  useEffect(() => {
+    const syncFullscreen = () => setFullscreenActive(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+  const toggleFullscreen = async (enabled) => {
+    try {
+      if (enabled && !document.fullscreenElement) await document.documentElement.requestFullscreen();
+      if (!enabled && document.fullscreenElement) await document.exitFullscreen();
+      setFullscreenActive(Boolean(document.fullscreenElement));
+      update("fullscreen", Boolean(document.fullscreenElement));
+    } catch {
+      setFullscreenActive(false);
+      update("fullscreen", false);
+    }
+  };
   const clearData = () => {
     if (window.confirm("清除所有记录、收藏和偏好？这个操作不能撤销。")) {
       setRecords([]); setFavorites([]);
@@ -568,7 +648,7 @@ function SettingsPage() {
   };
   return (
     <main className="screen settings-screen">
-      <div className="primary-page-mark"><FunctionSeal>设置</FunctionSeal></div>
+      <TopLevelIntro title={["把体验调成", "更适合你的样子。"]} subtitle="声音、动效与隐私，都可以随时调整。" section="设置" />
       <section className="menu-hub" aria-label="其他功能">
         <h2>基础功能</h2>
         <Link to="/encounter"><DiceThree size={20} /><span><strong>声音盲盒</strong><small>让此刻随机遇见一段声音</small></span><ArrowRight size={16} /></Link>
@@ -583,6 +663,7 @@ function SettingsPage() {
       </section>
       <section className="settings-group">
         <h2>体验</h2>
+        <div className="setting-row"><div><strong>全屏模式</strong><span>隐藏浏览器界面，更专注地体验</span></div><Toggle checked={fullscreenActive} onChange={toggleFullscreen} label="全屏模式" /></div>
         {[["breathing", "呼吸提示"], ["haptics", "轻触反馈"], ["reducedEffects", "降低动效"], ["weather", "盲盒使用天气信息"], ["recordsEnabled", "保存体验记录"]].map(([key, label]) => <div className="setting-row" key={key}><div><strong>{label}</strong><span>{key === "recordsEnabled" ? "默认关闭，只记录完成信息" : key === "weather" ? "需要时再请求定位权限" : "可随时调整"}</span></div><Toggle checked={settings[key]} onChange={(value) => update(key, value)} label={label} /></div>)}
       </section>
       <section className="settings-group privacy-block"><h2>你的数据</h2><p>数据只保存在当前浏览器。清除浏览器数据、卸载 PWA 或更换设备后无法恢复。</p><button className="danger-action" onClick={clearData}><Trash size={18} />清除所有本地数据</button></section>
@@ -592,10 +673,42 @@ function SettingsPage() {
 
 function ThemeEffect() {
   const { settings } = useData();
+  const feedbackContextRef = useRef(null);
+  const lastFeedbackRef = useRef(0);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
     document.documentElement.classList.toggle("reduce-effects", settings.reducedEffects);
   }, [settings.theme, settings.reducedEffects]);
+
+  useEffect(() => {
+    const feedback = (event) => {
+      if (!settings.haptics) return;
+      const target = event.target instanceof Element ? event.target.closest("button, a, [role='option'], [role='tab'], [role='switch']") : null;
+      if (!target || target.matches(":disabled, [aria-disabled='true']") || target.closest("[data-feedback='none']")) return;
+      const now = Date.now();
+      if (now - lastFeedbackRef.current < 70) return;
+      lastFeedbackRef.current = now;
+      const kind = target.dataset.feedback || "soft";
+      const duration = kind === "confirm" ? 16 : kind === "selection" ? 11 : 8;
+      if (typeof navigator.vibrate === "function" && navigator.vibrate(duration)) return;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = feedbackContextRef.current || new AudioContext();
+      feedbackContextRef.current = context;
+      if (context.state === "suspended") context.resume().catch(() => {});
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = kind === "confirm" ? 720 : 620;
+      gain.gain.setValueAtTime(0.009, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.018);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.02);
+    };
+    document.addEventListener("click", feedback, true);
+    return () => document.removeEventListener("click", feedback, true);
+  }, [settings.haptics]);
   return null;
 }
 
@@ -608,8 +721,8 @@ function RouteFocus() {
 }
 
 const primaryTabs = [
-  ["/burn", PencilSimple, "阅后即焚"],
   ["/", Waveform, "状态调整"],
+  ["/burn", PencilSimple, "阅后即焚"],
   ["/records", ClockCounterClockwise, "时间流转"],
   ["/settings", GearSix, "设置"],
 ];
@@ -622,7 +735,7 @@ function PersistentTabBar() {
       {primaryTabs.map(([path, Icon, label]) => {
         const active = location.pathname === path;
         return <Link key={path} to={path} className={active ? "is-active" : ""} aria-current={active ? "page" : undefined}>
-          {active && <motion.span className="tab-active-surface" layoutId="active-tab" transition={{ type: "spring", stiffness: 360, damping: 34 }} />}
+          {active && <motion.span className="tab-active-surface" layoutId="active-tab" transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }} />}
           <Icon size={21} weight="regular" /><span>{label}</span>
         </Link>;
       })}
@@ -655,13 +768,30 @@ function AmbientTexture() {
 
 function AppRoutes() {
   const location = useLocation();
+  const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
+  const swipeStartRef = useRef(null);
+  const onSwipeStart = (event) => {
+    if (event.touches.length !== 1 || !primaryTabs.some(([path]) => path === location.pathname)) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("button,a,input,textarea,canvas,[role='option'],[role='slider'],.state-selector,.burn-canvas")) return;
+    swipeStartRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  };
+  const onSwipeEnd = (event) => {
+    const start = swipeStartRef.current; swipeStartRef.current = null;
+    if (!start || !event.changedTouches.length) return;
+    const dx = event.changedTouches[0].clientX - start.x; const dy = event.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+    const index = primaryTabs.findIndex(([path]) => path === location.pathname);
+    const nextIndex = dx < 0 ? Math.min(primaryTabs.length - 1, index + 1) : Math.max(0, index - 1);
+    if (nextIndex !== index) navigate(primaryTabs[nextIndex][0]);
+  };
   return (
     <div className="mobile-prototype">
       <AmbientTexture />
       <ThemeEffect />
       <RouteFocus />
-      <AnimatePresence mode="wait" initial={false}><motion.div className="route-stage" key={location.pathname} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -5 }} transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }}><Routes location={location}>
+      <AnimatePresence mode="wait" initial={false}><motion.div className="route-stage" key={location.pathname} onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -5 }} transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }}><Routes location={location}>
         <Route path="/" element={<CanvasPage />} />
         <Route path="/states/:stateId" element={<StateScenesPage />} />
         <Route path="/meditation/:stateId/:sceneIndex" element={<MeditationPage />} />
