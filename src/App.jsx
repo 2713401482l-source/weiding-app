@@ -70,6 +70,13 @@ function getState(id) {
   return states.find((state) => state.id === id) ?? states[0];
 }
 
+function createId() {
+  const secureCrypto = globalThis.crypto;
+  if (typeof secureCrypto?.randomUUID === "function") return secureCrypto.randomUUID();
+  const values = new Uint32Array(4); secureCrypto?.getRandomValues?.(values);
+  return `${Date.now().toString(36)}-${[...values].map((value) => value.toString(36)).join("")}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function FunctionSeal({ children }) {
   return <span className="function-seal"><span aria-hidden="true">白</span><b>-{children}</b></span>;
 }
@@ -161,6 +168,7 @@ function CanvasPage() {
     if (!AudioContext) return;
     const context = audioContextRef.current || new AudioContext();
     audioContextRef.current = context;
+    if (context.state === "suspended") context.resume().catch(() => {});
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = "sine";
@@ -218,7 +226,7 @@ function CanvasPage() {
       <TopLevelIntro title={["此刻，你更接近", "哪种状态？"]} subtitle="不必判断得很准确，只选最接近的感受。" section="状态调整" />
 
       <section className="state-selector vertical" aria-label="选择当前状态">
-        <div className="state-list" role="listbox" aria-activedescendant={`state-${selected.id}`}>
+        <div className="state-list" role="listbox" aria-label="六种状态" aria-activedescendant={`state-${selected.id}`}>
           {states.map((state, index) => (
             <button
               id={`state-${state.id}`}
@@ -290,27 +298,35 @@ function useGuidedAudio(src, volume) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [audioError, setAudioError] = useState(false);
+  const [loading, setLoading] = useState(false);
   const audioRef = useRef(null);
 
   useEffect(() => {
     const element = new Audio(`${import.meta.env.BASE_URL}${src.replace(/^\//, "")}`);
     element.preload = "metadata";
     element.volume = volume;
-    element.addEventListener("loadedmetadata", () => setDuration(element.duration || 0));
-    element.addEventListener("timeupdate", () => {
-      setCurrentTime(element.currentTime || 0);
-      setProgress(element.duration ? element.currentTime / element.duration * 100 : 0);
-    });
-    element.addEventListener("ended", () => setPlaying(false));
+    const onMetadata = () => setDuration(element.duration || 0);
+    const onTime = () => setProgress(element.duration ? element.currentTime / element.duration * 100 : 0);
+    const onEnded = () => setPlaying(false);
+    const onError = () => { setAudioError(true); setLoading(false); setPlaying(false); };
+    element.addEventListener("loadedmetadata", onMetadata);
+    element.addEventListener("timeupdate", onTime);
+    element.addEventListener("ended", onEnded);
+    element.addEventListener("error", onError);
     audioRef.current = element;
-    return () => { element.pause(); element.src = ""; };
+    return () => {
+      element.pause();
+      element.removeEventListener("loadedmetadata", onMetadata); element.removeEventListener("timeupdate", onTime); element.removeEventListener("ended", onEnded); element.removeEventListener("error", onError);
+      element.removeAttribute("src"); element.load();
+    };
   }, [src]);
 
   useEffect(() => { if (audioRef.current) audioRef.current.volume = volume; }, [volume]);
 
   const play = () => {
-    audioRef.current?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    setAudioError(false); setLoading(true);
+    audioRef.current?.play().then(() => { setPlaying(true); setLoading(false); }).catch(() => { setPlaying(false); setLoading(false); setAudioError(true); });
   };
 
   const pause = () => {
@@ -322,10 +338,9 @@ function useGuidedAudio(src, volume) {
     if (!element) return;
     const next = Math.max(0, Math.min(element.duration || duration || 0, element.currentTime + seconds));
     element.currentTime = next;
-    setCurrentTime(next);
     setProgress(element.duration ? next / element.duration * 100 : 0);
   };
-  return { playing, play, pause, progress, duration, currentTime, seekBy };
+  return { playing, play, pause, progress, duration, seekBy, audioError, loading };
 }
 
 function MeditationPage() {
@@ -362,19 +377,20 @@ function MeditationPage() {
         <span>{state.title}</span>
         <span>{Math.max(1, Math.ceil((audio.duration * (1 - audio.progress / 100)) / 60))} 分钟</span>
       </div>
-      <button className="affirmation-stage" onClick={() => audio.playing ? audio.pause() : audio.play()} aria-label={audio.playing ? "暂停引导" : "播放引导"}>
+      <button className="affirmation-stage" disabled={audio.loading} aria-busy={audio.loading} onClick={() => audio.playing ? audio.pause() : audio.play()} aria-label={audio.loading ? "音频正在准备" : audio.playing ? "暂停引导" : "播放引导"}>
         <span className={`breath-orb ${audio.playing && settings.breathing ? "is-breathing" : ""}`} aria-hidden="true" />
         <p>{state.affirmation}</p>
         <span className="tap-hint">轻触{audio.playing ? "暂停" : "继续"}</span>
       </button>
       <div className="progress-track" aria-label={`播放进度 ${Math.round(audio.progress)}%`}><span style={{ width: `${audio.progress}%` }} /></div>
+      {audio.audioError && <div className="audio-error" role="alert"><span>声音暂时没有加载出来。</span><button onClick={audio.play}>重新尝试</button></div>}
       <div className="immersive-control-area">
         <AnimatePresence initial={false}>
           {controlsOpen && (
             <motion.div key="panel" className="immersive-controls" role="group" aria-label="播放控制" initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reduceMotion ? { opacity: 0, transition: { duration: .1 } } : { opacity: 0, y: 8, scale: .99, transition: { duration: .18, ease: [.4, 0, 1, 1] } }} transition={{ duration: reduceMotion ? .1 : .26, ease: [0.22, 1, 0.36, 1] }}>
               <div className="transport-controls">
                 <button onClick={() => keepControlsOpen(() => audio.seekBy(-15))} aria-label="后退15秒"><ArrowCounterClockwise size={23} /><span>15</span></button>
-                <button className="play-button" onClick={() => keepControlsOpen(() => audio.playing ? audio.pause() : audio.play())} aria-label={audio.playing ? "暂停" : "播放"}>
+                <button className="play-button" disabled={audio.loading} onClick={() => keepControlsOpen(() => audio.playing ? audio.pause() : audio.play())} aria-label={audio.loading ? "音频正在准备" : audio.playing ? "暂停" : "播放"}>
                   {audio.playing ? <Pause size={25} weight="fill" /> : <Play size={25} weight="fill" />}
                 </button>
                 <button onClick={() => keepControlsOpen(() => audio.seekBy(15))} aria-label="前进15秒"><ArrowClockwise size={23} /><span>15</span></button>
@@ -413,7 +429,7 @@ function CompletionPage() {
     setFeedback(value);
     if (settings.recordsEnabled && !recordedRef.current) {
       recordedRef.current = true;
-      setRecords((items) => [{ id: crypto.randomUUID(), type: "meditation", stateId, feedback: value, at: new Date().toISOString(), duration: 180 }, ...items]);
+      setRecords((items) => [{ id: createId(), type: "meditation", stateId, feedback: value, at: new Date().toISOString(), duration: 180 }, ...items]);
     }
   };
   useEffect(() => {
@@ -451,27 +467,47 @@ function HandwritingBurn({ burning, onContent, onBurnComplete }) {
   const drawingRef = useRef(false);
   const burnFrameRef = useRef(null);
   const ratioRef = useRef(1);
+  const burningRef = useRef(burning);
+  const completeRef = useRef(onBurnComplete);
+
+  useEffect(() => { burningRef.current = burning; completeRef.current = onBurnComplete; }, [burning, onBurnComplete]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    ratioRef.current = ratio;
-    canvas.width = Math.round(rect.width * ratio); canvas.height = Math.round(rect.height * ratio);
-    const context = canvas.getContext("2d"); context.scale(ratio, ratio); context.lineCap = "round"; context.lineJoin = "round";
-    return () => cancelAnimationFrame(burnFrameRef.current);
+    let resizeFrame;
+    const resizeCanvas = () => {
+      if (burningRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const previous = document.createElement("canvas"); previous.width = canvas.width; previous.height = canvas.height;
+      if (canvas.width && canvas.height) previous.getContext("2d").drawImage(canvas, 0, 0);
+      const economical = document.documentElement.classList.contains("low-power");
+      const ratio = Math.min(window.devicePixelRatio || 1, economical ? 1.25 : 1.75);
+      ratioRef.current = ratio; canvas.width = Math.round(rect.width * ratio); canvas.height = Math.round(rect.height * ratio);
+      const context = canvas.getContext("2d"); context.setTransform(ratio, 0, 0, ratio, 0, 0); context.lineCap = "round"; context.lineJoin = "round";
+      if (previous.width && previous.height) context.drawImage(previous, 0, 0, previous.width, previous.height, 0, 0, rect.width, rect.height);
+    };
+    const queueResize = () => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(resizeCanvas); };
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(queueResize) : null;
+    resizeCanvas();
+    if (observer) observer.observe(canvas); else window.addEventListener("resize", queueResize, { passive: true });
+    return () => { observer?.disconnect(); window.removeEventListener("resize", queueResize); cancelAnimationFrame(resizeFrame); cancelAnimationFrame(burnFrameRef.current); };
   }, []);
 
   const point = (event) => { const rect = canvasRef.current.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: event.pressure || .45 }; };
   useEffect(() => {
     if (!burning) return undefined;
     const canvas = canvasRef.current; const context = canvas.getContext("2d");
-    const snapshot = context.getImageData(0, 0, canvas.width, canvas.height);
-    const seeds = Array.from({ length: 16 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, delay: Math.random() * .38, size: (70 + Math.random() * 110) * ratioRef.current }));
+    const economical = document.documentElement.classList.contains("low-power");
+    const snapshot = document.createElement("canvas"); snapshot.width = canvas.width; snapshot.height = canvas.height; snapshot.getContext("2d").drawImage(canvas, 0, 0);
+    const seeds = Array.from({ length: economical ? 11 : 15 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, delay: Math.random() * .38, size: (76 + Math.random() * 112) * ratioRef.current }));
     const start = performance.now();
+    let lastPaint = 0;
     const burn = (time) => {
+      if (economical && time - lastPaint < 30) { burnFrameRef.current = requestAnimationFrame(burn); return; }
+      lastPaint = time;
       const progress = Math.min(1, (time - start) / 2600);
-      context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.putImageData(snapshot, 0, 0);
+      context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(snapshot, 0, 0);
       seeds.forEach((seed) => {
         const local = Math.max(0, Math.min(1, (progress - seed.delay) / (1 - seed.delay)));
         if (!local) return;
@@ -483,11 +519,11 @@ function HandwritingBurn({ burning, onContent, onBurnComplete }) {
         context.save(); context.globalCompositeOperation = "destination-out"; context.beginPath(); context.arc(seed.x, seed.y, Math.max(0, radius - 8 * ratioRef.current), 0, Math.PI * 2); context.fill(); context.restore();
       });
       if (progress < 1) burnFrameRef.current = requestAnimationFrame(burn);
-      else { context.clearRect(0, 0, canvas.width, canvas.height); context.setTransform(ratioRef.current, 0, 0, ratioRef.current, 0, 0); onBurnComplete(); }
+      else { context.clearRect(0, 0, canvas.width, canvas.height); context.setTransform(ratioRef.current, 0, 0, ratioRef.current, 0, 0); completeRef.current(); }
     };
     burnFrameRef.current = requestAnimationFrame(burn);
     return () => cancelAnimationFrame(burnFrameRef.current);
-  }, [burning, onBurnComplete]);
+  }, [burning]);
   const down = (event) => { drawingRef.current = true; canvasRef.current.setPointerCapture(event.pointerId); const context = canvasRef.current.getContext("2d"); const p = point(event); context.beginPath(); context.moveTo(p.x, p.y); };
   const move = (event) => { if (!drawingRef.current || burning) return; const context = canvasRef.current.getContext("2d"); const p = point(event); context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink"); context.lineWidth = 1.5 + p.pressure * 4; context.lineTo(p.x, p.y); context.stroke(); onContent(true); };
   const up = () => { drawingRef.current = false; };
@@ -506,7 +542,7 @@ function BurnPage() {
     const clean = value.trim();
     if (mode === "draw") { if (!drawingPresent || burning) return; setBurning(true); return; }
     if (!clean || burning) return;
-    const id = crypto.randomUUID();
+    const id = createId();
     const origins = Array.from({ length: Math.min(6, Math.max(3, Math.ceil(clean.length / 12))) }, () => Math.floor(Math.random() * clean.length));
     const chars = [...clean].map((char, index) => ({ char, delay: Math.min(...origins.map((origin) => Math.abs(origin - index) * (22 + Math.random() * 18))) + Math.random() * 180, driftX: Math.round((Math.random() - .5) * 28), driftY: -12 - Math.round(Math.random() * 30), rotate: Math.round((Math.random() - .5) * 16) }));
     setBurning(true); setEmbers([{ id, chars }]);
@@ -524,6 +560,7 @@ function BurnPage() {
       <TopLevelIntro title={["让它暂时", "离开脑海。"]} subtitle="不会保存，也不会发送。" section="阅后即焚" />
       <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => { setMode("type"); setBurning(false); setDrawingPresent(false); }}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => { setMode("draw"); setBurning(false); setDrawingPresent(false); }}>手写</button></div>
       <div className={`burn-canvas ${burning ? "is-burning" : ""}`} onPointerDown={placeCursor}>
+        {mode === "type" && !draft && !burning && <span className="burn-placeholder" aria-hidden="true">轻触任意位置，写下一句。</span>}
         {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder="轻触任意位置，写下一句。" style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px` }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); }} />}
         {embers.map((ember) => <p className="burn-ember" key={ember.id} style={{ left: anchor.x, top: anchor.y }}>{ember.chars.map((item, index) => <span key={`${item.char}-${index}`} style={{ animationDelay: `${item.delay}ms`, "--drift-x": `${item.driftX}px`, "--drift-y": `${item.driftY}px`, "--burn-rotate": `${item.rotate}deg` }}>{item.char}</span>)}</p>)}
       </div>
@@ -550,7 +587,7 @@ function EncounterPage() {
     return () => clearInterval(timer);
   }, [playing, initialTrack.duration]);
   const leave = () => {
-    if (settings.recordsEnabled) setRecords((items) => [{ id: crypto.randomUUID(), type: "encounter", at: new Date().toISOString(), duration: elapsed, completed: elapsed >= initialTrack.duration }, ...items]);
+    if (settings.recordsEnabled) setRecords((items) => [{ id: createId(), type: "encounter", at: new Date().toISOString(), duration: elapsed, completed: elapsed >= initialTrack.duration }, ...items]);
     navigate("/");
   };
   return (
@@ -621,19 +658,28 @@ function Toggle({ checked, onChange, label }) {
 
 function SettingsPage() {
   const { settings, setSettings, setRecords, setFavorites } = useData();
-  const [fullscreenActive, setFullscreenActive] = useState(Boolean(document.fullscreenElement));
+  const getFullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const [fullscreenActive, setFullscreenActive] = useState(Boolean(getFullscreenElement()));
   const update = (key, value) => setSettings({ ...settings, [key]: value });
   useEffect(() => {
-    const syncFullscreen = () => setFullscreenActive(Boolean(document.fullscreenElement));
+    const syncFullscreen = () => setFullscreenActive(Boolean(getFullscreenElement()));
     document.addEventListener("fullscreenchange", syncFullscreen);
-    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("webkitfullscreenchange", syncFullscreen);
+    return () => { document.removeEventListener("fullscreenchange", syncFullscreen); document.removeEventListener("webkitfullscreenchange", syncFullscreen); };
   }, []);
   const toggleFullscreen = async (enabled) => {
     try {
-      if (enabled && !document.fullscreenElement) await document.documentElement.requestFullscreen();
-      if (!enabled && document.fullscreenElement) await document.exitFullscreen();
-      setFullscreenActive(Boolean(document.fullscreenElement));
-      update("fullscreen", Boolean(document.fullscreenElement));
+      if (enabled && !getFullscreenElement()) {
+        const request = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+        if (!request) throw new Error("fullscreen unsupported");
+        await request.call(document.documentElement);
+      }
+      if (!enabled && getFullscreenElement()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        await exit?.call(document);
+      }
+      setFullscreenActive(Boolean(getFullscreenElement()));
+      update("fullscreen", Boolean(getFullscreenElement()));
     } catch {
       setFullscreenActive(false);
       update("fullscreen", false);
@@ -671,6 +717,35 @@ function SettingsPage() {
   );
 }
 
+function MobileEnvironmentEffect() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const lowPower = Boolean(connection?.saveData || (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4));
+    root.classList.toggle("low-power", lowPower);
+    const updateViewport = () => {
+      const viewport = window.visualViewport;
+      const visibleHeight = viewport?.height || window.innerHeight;
+      root.style.setProperty("--visual-viewport-height", `${Math.round(visibleHeight)}px`);
+      const active = document.activeElement;
+      const editing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active?.isContentEditable;
+      root.classList.toggle("keyboard-open", Boolean(editing && viewport && viewport.scale === 1 && window.innerHeight - visibleHeight > 100));
+    };
+    updateViewport();
+    window.visualViewport?.addEventListener("resize", updateViewport, { passive: true });
+    window.visualViewport?.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("orientationchange", updateViewport, { passive: true });
+    document.addEventListener("focusin", updateViewport);
+    document.addEventListener("focusout", updateViewport);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateViewport); window.visualViewport?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport); document.removeEventListener("focusin", updateViewport); document.removeEventListener("focusout", updateViewport);
+      root.classList.remove("keyboard-open", "low-power"); root.style.removeProperty("--visual-viewport-height");
+    };
+  }, []);
+  return null;
+}
+
 function ThemeEffect() {
   const { settings } = useData();
   const feedbackContextRef = useRef(null);
@@ -678,6 +753,14 @@ function ThemeEffect() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
     document.documentElement.classList.toggle("reduce-effects", settings.reducedEffects);
+    const darkPreference = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateChrome = () => {
+      const dark = settings.theme === "dark" || (settings.theme === "system" && darkPreference.matches);
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#171817" : "#fbfbfa");
+    };
+    updateChrome();
+    if (darkPreference.addEventListener) darkPreference.addEventListener("change", updateChrome); else darkPreference.addListener?.(updateChrome);
+    return () => { if (darkPreference.removeEventListener) darkPreference.removeEventListener("change", updateChrome); else darkPreference.removeListener?.(updateChrome); };
   }, [settings.theme, settings.reducedEffects]);
 
   useEffect(() => {
@@ -775,7 +858,9 @@ function AppRoutes() {
     if (event.touches.length !== 1 || !primaryTabs.some(([path]) => path === location.pathname)) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest("button,a,input,textarea,canvas,[role='option'],[role='slider'],.state-selector,.burn-canvas")) return;
-    swipeStartRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    const x = event.touches[0].clientX;
+    if (x < 28 || x > window.innerWidth - 28) return;
+    swipeStartRef.current = { x, y: event.touches[0].clientY };
   };
   const onSwipeEnd = (event) => {
     const start = swipeStartRef.current; swipeStartRef.current = null;
@@ -789,6 +874,7 @@ function AppRoutes() {
   return (
     <div className="mobile-prototype">
       <AmbientTexture />
+      <MobileEnvironmentEffect />
       <ThemeEffect />
       <RouteFocus />
       <AnimatePresence mode="wait" initial={false}><motion.div className="route-stage" key={location.pathname} onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -5 }} transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }}><Routes location={location}>
