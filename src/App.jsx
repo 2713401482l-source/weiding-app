@@ -42,7 +42,7 @@ function useAppData() {
   const [favorites, setFavorites] = useLocalStorage("baijing:favorites", []);
   const [records, setRecords] = useLocalStorage("baijing:records", []);
   const [settings, setSettings] = useLocalStorage("baijing:settings", {
-    theme: "light",
+    theme: "dark",
     recordsEnabled: false,
     breathing: true,
     haptics: true,
@@ -551,7 +551,7 @@ function BurnPage() {
   const [embers, setEmbers] = useState([]);
   const [drawingPresent, setDrawingPresent] = useState(false);
   const [burning, setBurning] = useState(false);
-  const [anchor, setAnchor] = useState({ x: 24, y: 34 });
+  const [anchor, setAnchor] = useState({ x: 24, y: 30 });
   const inputRef = useRef(null);
   const ignite = (value = draft) => {
     const clean = value.trim();
@@ -571,7 +571,7 @@ function BurnPage() {
       const rect = event.currentTarget.getBoundingClientRect();
       setAnchor({ x: Math.max(12, Math.min(rect.width - 180, event.clientX - rect.left)), y: Math.max(18, Math.min(rect.height - 120, event.clientY - rect.top)) });
     } else {
-      setAnchor({ x: 24, y: 34 });
+      setAnchor({ x: 24, y: 30 });
     }
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -580,8 +580,8 @@ function BurnPage() {
       <TopLevelIntro title={["写下再放下", "让它化作余烬"]} subtitle="不会保存，也不会发送。" section="阅后即焚" />
       <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => { setMode("type"); setBurning(false); setDrawingPresent(false); }}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => { setMode("draw"); setBurning(false); setDrawingPresent(false); }}>手写</button></div>
       <div className={`burn-canvas ${burning ? "is-burning" : ""} ${freePlacement ? "is-free-placement" : "is-fixed-placement"}`} onPointerDown={placeCursor}>
-        {mode === "type" && !draft && !burning && <span className="burn-placeholder" aria-hidden="true">{freePlacement ? "轻触任意位置，写下一句。" : "从这里，写下想放下的内容。"}</span>}
-        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder="轻触任意位置，写下一句。" style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px` }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); }} />}
+        {mode === "type" && freePlacement && !draft && !burning && <span className="burn-placeholder" aria-hidden="true">轻触任意位置，写下一句。</span>}
+        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder={freePlacement ? "" : "从这里，写下想放下的内容。"} style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px` }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); }} />}
         {embers.map((ember) => <p className="burn-ember" key={ember.id} style={{ left: anchor.x, top: anchor.y }}>{ember.chars.map((item, index) => <span key={`${item.char}-${index}`} style={{ animationDelay: `${item.delay}ms`, "--drift-x": `${item.driftX}px`, "--drift-y": `${item.driftY}px`, "--burn-rotate": `${item.rotate}deg` }}>{item.char}</span>)}</p>)}
       </div>
       <AnimatePresence>{((mode === "type" && draft.trim()) || (mode === "draw" && drawingPresent)) && !burning && <motion.button className="ignite-action" data-feedback="confirm" onClick={() => ignite()} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}>让它消散</motion.button>}</AnimatePresence>

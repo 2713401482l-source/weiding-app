@@ -29,6 +29,9 @@ When implementing from a selected generated mock, treat that image as the source
 - Meditation copy rotates by equal audio-progress segments using an interruptible crossfade. Its breathing surface slowly shifts between system gray and the restrained brand orange, with a reduced-motion fallback.
 - Canvas state names use the narrative serif stack. Selected subtitles use dedicated short copy and remain on one readable line inside a taller tonal selection surface.
 - Burn typing defaults to a subtle fixed writing surface with a fixed start position. Settings can switch it to the existing free-placement behavior; handwriting is unaffected.
+- New and reset installations default to dark appearance. Preserve any explicit saved light or system preference, and resolve system appearance before first paint to avoid a flash.
+- Burn fixed-input placeholder, caret, typed copy and burning copy share the same 20px KaiTi narrative metrics and fixed origin. Burning may glow and fragment, but must never render a rectangular text boundary.
+- Meditation breathing halos must remain fully inside the visible stage at 320px portrait, common long-screen phones and phone landscape. The breathing surface is visually centered while both collapsed and expanded controls remain above the bottom edge without scrolling.
 
 - Primary visual source: `design/final-canvas-target.png`.
 - Keep the reference's quiet monochrome soft-control material, circular selector, generous whitespace, fine strokes, subtle ambient elevation, and restrained 12-16px radii.

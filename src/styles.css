@@ -224,13 +224,13 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
   height:100%;
   min-height:0;
   overflow:hidden;
-  place-items:start center;
-  padding:clamp(20px,5dvh,50px) 12px 22px;
+  place-items:center;
+  padding:0 12px 22px;
   transform:none;
 }
 .affirmation-visual{
   position:relative;
-  width:clamp(154px,min(58vw,29dvh),222px);
+  width:clamp(154px,min(48vw,24dvh),204px);
   aspect-ratio:1;
   display:grid;
   place-items:center;
@@ -261,7 +261,13 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
   50%{transform:scale(1.04);opacity:1;background-color:color-mix(in srgb,var(--accent) 7%,var(--surface));border-color:color-mix(in srgb,var(--accent) 58%,var(--line));box-shadow:0 0 0 34px color-mix(in srgb,var(--accent) 7%,transparent),0 0 0 68px color-mix(in srgb,var(--accent) 3%,transparent)}
 }
 .tap-hint{bottom:9px}
-.immersive-control-area{min-height:0;gap:8px;padding:10px 0 0}
+.immersive-control-area{
+  height:clamp(190px,25dvh,232px);
+  min-height:0;
+  box-sizing:border-box;
+  gap:8px;
+  padding:0 0 clamp(24px,5dvh,46px);
+}
 .control-reveal{min-height:48px}
 .immersive-controls{padding:12px 18px 10px}
 .transport-controls>button{width:48px;height:48px}
@@ -279,14 +285,16 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
   top:30px!important;
   width:calc(100% - 48px)!important;
   height:calc(100% - 58px)!important;
+  font-family:"KaiTi","STKaiti",var(--font-narrative);
+  font-size:20px;
+  line-height:1.8;
+  letter-spacing:.06em;
 }
-.burn-canvas.is-fixed-placement .burn-placeholder{
-  top:32px;
-  left:24px;
-  right:24px;
-  text-align:left;
-}
+.burn-canvas.is-fixed-placement textarea::placeholder{color:var(--subtle);opacity:1}
 .burn-canvas.is-free-placement{background:transparent;box-shadow:none}
+.burn-canvas.is-free-placement textarea::placeholder{color:transparent}
+.burn-ember{font-size:20px;line-height:1.8;letter-spacing:.06em}
+.burn-ember:after{content:none!important;animation:none!important;box-shadow:none!important}
 .setting-choice-row{padding:14px 0 18px;border-bottom:1px solid var(--line)}
 .setting-choice-row>div:first-child{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
 .setting-choice-row strong{font-family:var(--font-ui);font-size:13px;font-weight:500}
@@ -298,17 +306,18 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
   .state-title-row.is-selected{font-size:20px}
   .state-title-row small{font-size:10px}
   .detail-hero h1{font-size:24px}
+  .affirmation-visual{width:min(44vw,148px)}
   .affirmation-stage p{font-size:15px;line-height:1.68}
   .transport-controls{gap:18px}
 }
 @media(orientation:portrait) and (max-height:700px){
   .meditation-screen .app-header{min-height:calc(var(--safe-top) + 52px)}
   .meditation-meta{min-height:24px}
-  .affirmation-stage{padding-block:6px 14px}
+  .affirmation-stage{padding:0 8px 14px}
   .affirmation-stage p{font-size:15px;line-height:1.62}
-  .affirmation-visual{width:clamp(142px,25dvh,176px)}
+  .affirmation-visual{width:clamp(136px,23dvh,164px)}
   .breath-orb{box-shadow:0 0 0 22px color-mix(in srgb,var(--line) 12%,transparent),0 0 0 44px color-mix(in srgb,var(--line) 5%,transparent)}
-  .immersive-control-area{padding-top:6px}
+  .immersive-control-area{height:190px;padding:0 0 24px}
   .immersive-controls{padding-block:8px}
   .transport-controls>button{width:44px;height:44px}
   .transport-controls .play-button{width:50px;height:50px}
