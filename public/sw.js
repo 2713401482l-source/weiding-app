@@ -1,4 +1,4 @@
-const CACHE_NAME = "weiding-shell-v5";
+const CACHE_NAME = "weiding-shell-v6";
 const BASE = new URL("./", self.registration.scope).pathname;
 
 self.addEventListener("install", (event) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isIOSSafari, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
+import { isIOSSafari, lockPortraitOrientation, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
 
 const safari = {
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
@@ -31,5 +31,27 @@ describe("splash timing", () => {
   it("uses the approved full and reduced motion durations", () => {
     expect(splashDuration(false)).toBe(1850);
     expect(splashDuration(true)).toBe(500);
+  });
+});
+
+describe("installed app orientation", () => {
+  it("requests portrait-primary for an installed app", async () => {
+    let requested = "";
+    const locked = await lockPortraitOrientation({
+      navigatorLike: { standalone: true },
+      matchMediaLike: () => ({ matches: false }),
+      screenLike: { orientation: { lock: async (value) => { requested = value; } } },
+    });
+    expect(locked).toBe(true);
+    expect(requested).toBe("portrait-primary");
+  });
+
+  it("does not request a lock in a regular browser tab", async () => {
+    const locked = await lockPortraitOrientation({
+      navigatorLike: { standalone: false },
+      matchMediaLike: () => ({ matches: false }),
+      screenLike: { orientation: { lock: async () => { throw new Error("should not run"); } } },
+    });
+    expect(locked).toBe(false);
   });
 });

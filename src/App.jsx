@@ -35,7 +35,7 @@ import {
 } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { encounterTracks, knowledgeTopics, states } from "./data.js";
-import { isIOSSafari, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
+import { isIOSSafari, lockPortraitOrientation, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 
 const DataContext = createContext(null);
@@ -187,11 +187,13 @@ function CanvasPage() {
   const playRailTick = (index) => {
     if (lastTickRef.current === index) return;
     lastTickRef.current = index;
-    if (settings.haptics) navigator.vibrate?.(index === 2 ? 7 : 10);
+    if (settings.haptics && typeof navigator.vibrate === "function") {
+      navigator.vibrate(index === 2 ? 14 : index === 5 ? 18 : 11);
+    }
     if (settings.interfaceSounds === false) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    const context = audioContextRef.current || new AudioContext();
+    const context = audioContextRef.current || new AudioContext({ latencyHint: "interactive" });
     audioContextRef.current = context;
     const sound = () => {
       const profile = railSonicProfiles[index];
@@ -204,7 +206,7 @@ function CanvasPage() {
       primary.frequency.setValueAtTime(profile.frequency, now);
       overtone.frequency.setValueAtTime(profile.frequency * profile.overtone, now);
       gain.gain.setValueAtTime(.0001, now);
-      gain.gain.exponentialRampToValueAtTime(index === 2 ? .014 : .021, now + .008);
+      gain.gain.exponentialRampToValueAtTime(index === 2 ? .042 : .055, now + .008);
       gain.gain.exponentialRampToValueAtTime(.0001, now + profile.duration);
       primary.connect(gain); overtone.connect(gain); gain.connect(context.destination);
       primary.start(now); overtone.start(now);
@@ -273,7 +275,6 @@ function CanvasPage() {
               onClick={() => selectedIndex === index ? navigate(`/states/${state.id}`) : setSelectedIndex(index)}
             >
               <span className="state-name-line"><span>{state.title}</span></span>
-              <CaretRight className="state-enter-cue" size={17} aria-hidden="true" />
               <small aria-hidden={selectedIndex !== index}>{state.shortDescription ?? state.description}</small>
             </button>
           ))}
@@ -1011,7 +1012,7 @@ function SettingsPage() {
         <h2>声音与反馈</h2>
         {[
           ["interfaceSounds", "界面音效", "状态滑杆与必要的操作提示音"],
-          ["haptics", "触感反馈", "支持时使用手机振动"],
+          ["haptics", "触感反馈", typeof navigator.vibrate === "function" ? "滑动与点击时使用手机振动" : "当前设备使用声音与视觉反馈"],
           ["breathing", "呼吸提示", "播放时显示缓慢呼吸变化"],
         ].map(([key, label, description]) => <div className="setting-row" key={key}><div><strong>{label}</strong><span>{description}</span></div><Toggle checked={settings[key] ?? (key === "interfaceSounds")} onChange={(value) => update(key, value)} label={label} /></div>)}
       </section>
@@ -1131,15 +1132,26 @@ function MobileEnvironmentEffect() {
       const editing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active?.isContentEditable;
       root.classList.toggle("keyboard-open", Boolean(editing && viewport && viewport.scale === 1 && window.innerHeight - visibleHeight > 100));
     };
+    const lockPortrait = () => {
+      if (document.visibilityState === "hidden") return;
+      lockPortraitOrientation();
+    };
+    const lockPortraitWhenVisible = () => { if (document.visibilityState === "visible") lockPortrait(); };
     updateViewport();
+    lockPortrait();
     window.visualViewport?.addEventListener("resize", updateViewport, { passive: true });
     window.visualViewport?.addEventListener("scroll", updateViewport, { passive: true });
     window.addEventListener("orientationchange", updateViewport, { passive: true });
+    window.addEventListener("pageshow", lockPortrait);
+    document.addEventListener("visibilitychange", lockPortraitWhenVisible);
+    document.addEventListener("pointerdown", lockPortrait, { once: true, passive: true });
     document.addEventListener("focusin", updateViewport);
     document.addEventListener("focusout", updateViewport);
     return () => {
       window.visualViewport?.removeEventListener("resize", updateViewport); window.visualViewport?.removeEventListener("scroll", updateViewport);
-      window.removeEventListener("orientationchange", updateViewport); document.removeEventListener("focusin", updateViewport); document.removeEventListener("focusout", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport); window.removeEventListener("pageshow", lockPortrait);
+      document.removeEventListener("visibilitychange", lockPortraitWhenVisible); document.removeEventListener("pointerdown", lockPortrait);
+      document.removeEventListener("focusin", updateViewport); document.removeEventListener("focusout", updateViewport);
       root.classList.remove("keyboard-open", "low-power"); root.style.removeProperty("--visual-viewport-height");
     };
   }, []);
@@ -1177,18 +1189,22 @@ function ThemeEffect() {
       if (settings.interfaceSounds === false) return;
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
-      const context = feedbackContextRef.current || new AudioContext();
+      const context = feedbackContextRef.current || new AudioContext({ latencyHint: "interactive" });
       feedbackContextRef.current = context;
-      if (context.state === "suspended") context.resume().catch(() => {});
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.value = kind === "confirm" ? 720 : 620;
-      gain.gain.setValueAtTime(0.009, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.018);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.02);
+      const sound = () => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const now = context.currentTime;
+        oscillator.type = kind === "confirm" ? "triangle" : "sine";
+        oscillator.frequency.setValueAtTime(kind === "confirm" ? 720 : 620, now);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(kind === "confirm" ? 0.028 : 0.018, now + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.034);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.04);
+      };
+      if (context.state === "suspended") context.resume().then(sound).catch(() => {}); else sound();
     };
     document.addEventListener("click", feedback, true);
     return () => document.removeEventListener("click", feedback, true);

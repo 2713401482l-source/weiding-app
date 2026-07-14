@@ -32,3 +32,17 @@ export function shouldOfferIOSInstall({
 export function splashDuration(reducedMotion = false) {
   return reducedMotion ? 500 : 1850;
 }
+
+export async function lockPortraitOrientation({
+  screenLike = globalThis.screen,
+  navigatorLike = globalThis.navigator,
+  matchMediaLike = globalThis.matchMedia,
+} = {}) {
+  if (!isStandaloneApp(navigatorLike, matchMediaLike) || typeof screenLike?.orientation?.lock !== "function") return false;
+  try {
+    await screenLike.orientation.lock("portrait-primary");
+    return true;
+  } catch {
+    return false;
+  }
+}
