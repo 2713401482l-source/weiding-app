@@ -1,18 +1,18 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   ArrowClockwise,
   ArrowCounterClockwise,
   BookOpenText,
-  CaretDown,
+  CaretRight,
   Check,
   ClockCounterClockwise,
   DiceThree,
   GearSix,
-  Heart,
   List,
   LockSimple,
+  MusicNotes,
   Moon,
   Pause,
   PencilSimple,
@@ -26,6 +26,7 @@ import {
 import {
   HashRouter,
   Link,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -39,7 +40,6 @@ import { useLocalStorage } from "./useLocalStorage.js";
 const DataContext = createContext(null);
 
 function useAppData() {
-  const [favorites, setFavorites] = useLocalStorage("baijing:favorites", []);
   const [records, setRecords] = useLocalStorage("baijing:records", []);
   const [settings, setSettings] = useLocalStorage("baijing:settings", {
     theme: "dark",
@@ -49,11 +49,10 @@ function useAppData() {
     reducedEffects: false,
     voiceVolume: 0.72,
     ambienceVolume: 0.42,
-    weather: false,
     fullscreen: false,
     burnInputLayout: "fixed",
   });
-  return { favorites, setFavorites, records, setRecords, settings, setSettings };
+  return { records, setRecords, settings, setSettings };
 }
 
 function DataProvider({ children }) {
@@ -118,8 +117,7 @@ function MenuPanel({ open, onClose }) {
   if (!open) return null;
   const links = [
     ["/records", ClockCounterClockwise, "体验记录"],
-    ["/favorites", Heart, "收藏"],
-    ["/emotion-index", BookOpenText, "情绪索引"],
+    ["/psychology-library", BookOpenText, "心理学文库"],
     ["/encounter", DiceThree, "声音盲盒"],
     ["/settings", GearSix, "设置与隐私"],
   ];
@@ -159,25 +157,46 @@ function CanvasPage() {
   const audioContextRef = useRef(null);
   const lastTickRef = useRef(0);
   const navigate = useNavigate();
+  const { settings } = useData();
   const reduceMotion = useReducedMotion();
   const selected = states[selectedIndex];
+
+  const railSonicProfiles = [
+    { frequency: 392, overtone: 1.5, type: "sine", duration: .07 },
+    { frequency: 440, overtone: 1.25, type: "triangle", duration: .065 },
+    { frequency: 523.25, overtone: 1.125, type: "triangle", duration: .045 },
+    { frequency: 293.66, overtone: 1.5, type: "sine", duration: .085 },
+    { frequency: 349.23, overtone: 1.25, type: "sine", duration: .095 },
+    { frequency: 261.63, overtone: 2, type: "sine", duration: .11 },
+  ];
 
   const playRailTick = (index) => {
     if (lastTickRef.current === index) return;
     lastTickRef.current = index;
+    if (!settings.haptics) return;
+    navigator.vibrate?.(index === 2 ? 7 : 10);
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
     const context = audioContextRef.current || new AudioContext();
     audioContextRef.current = context;
-    if (context.state === "suspended") context.resume().catch(() => {});
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.value = 460 + index * 24;
-    gain.gain.setValueAtTime(0.025, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.045);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(); oscillator.stop(context.currentTime + 0.05);
+    const sound = () => {
+      const profile = railSonicProfiles[index];
+      const now = context.currentTime;
+      const gain = context.createGain();
+      const primary = context.createOscillator();
+      const overtone = context.createOscillator();
+      primary.type = profile.type;
+      overtone.type = "sine";
+      primary.frequency.setValueAtTime(profile.frequency, now);
+      overtone.frequency.setValueAtTime(profile.frequency * profile.overtone, now);
+      gain.gain.setValueAtTime(.0001, now);
+      gain.gain.exponentialRampToValueAtTime(index === 2 ? .014 : .021, now + .008);
+      gain.gain.exponentialRampToValueAtTime(.0001, now + profile.duration);
+      primary.connect(gain); overtone.connect(gain); gain.connect(context.destination);
+      primary.start(now); overtone.start(now);
+      primary.stop(now + profile.duration + .01); overtone.stop(now + profile.duration + .01);
+    };
+    if (context.state === "suspended") context.resume().then(sound).catch(() => {}); else sound();
   };
 
   const updateFromPointer = (clientY) => {
@@ -190,6 +209,7 @@ function CanvasPage() {
   };
 
   const onPointerDown = (event) => {
+    lastTickRef.current = -1;
     setDragging(true);
     railRef.current?.setPointerCapture(event.pointerId);
     updateFromPointer(event.clientY);
@@ -205,6 +225,7 @@ function CanvasPage() {
     setDragging(false);
     railRef.current?.releasePointerCapture(event.pointerId);
     setSelectedIndex(releasedIndex);
+    navigate(`/states/${states[releasedIndex].id}`);
   };
 
   const onKeyDown = (event) => {
@@ -235,10 +256,9 @@ function CanvasPage() {
               role="option"
               aria-selected={selectedIndex === index}
               className={`state-title-row ${selectedIndex === index ? "is-selected" : ""}`}
-              onFocus={() => setSelectedIndex(index)}
               onClick={() => selectedIndex === index ? navigate(`/states/${state.id}`) : setSelectedIndex(index)}
             >
-              <span>{state.title}</span>
+              <span className="state-name-line"><span>{state.title}</span>{selectedIndex === index && <CaretRight className="state-enter-cue" size={17} aria-hidden="true" />}</span>
               {selectedIndex === index && <small>{state.shortDescription ?? state.description}</small>}
             </button>
           ))}
@@ -264,6 +284,8 @@ function CanvasPage() {
           {states.map((state, index) => <span key={state.id} className={`rail-stop ${selectedIndex === index ? "is-selected" : ""}`} style={{ top: `${((index + 0.5) / states.length) * 100}%` }} aria-hidden="true" />)}
         </div>
       </section>
+
+      <p className="state-interaction-tip">拖动右侧滑杆，松手进入；也可轻触选择。</p>
 
       <AnimatePresence mode="wait"><motion.p className="selected-description" key={selected.id} initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>{selected.description}</motion.p></AnimatePresence>
 
@@ -517,23 +539,55 @@ function HandwritingBurn({ burning, onContent, onBurnComplete }) {
     const canvas = canvasRef.current; const context = canvas.getContext("2d");
     const economical = document.documentElement.classList.contains("low-power");
     const snapshot = document.createElement("canvas"); snapshot.width = canvas.width; snapshot.height = canvas.height; snapshot.getContext("2d").drawImage(canvas, 0, 0);
-    const seeds = Array.from({ length: economical ? 11 : 15 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, delay: Math.random() * .38, size: (76 + Math.random() * 112) * ratioRef.current }));
+    const pixels = snapshot.getContext("2d").getImageData(0, 0, snapshot.width, snapshot.height).data;
+    const inkPoints = [];
+    const stride = Math.max(2, Math.round(4 * ratioRef.current));
+    for (let y = 0; y < snapshot.height; y += stride) {
+      for (let x = 0; x < snapshot.width; x += stride) {
+        if (pixels[(y * snapshot.width + x) * 4 + 3] > 28) inkPoints.push({ x, y });
+      }
+    }
+    if (!inkPoints.length) { completeRef.current(); return undefined; }
+    const seedCount = Math.min(economical ? 34 : 64, Math.max(20, Math.round(inkPoints.length / 16)));
+    const seeds = Array.from({ length: seedCount }, (_, index) => {
+      const pointOnInk = inkPoints[Math.floor(Math.random() * inkPoints.length)];
+      return {
+        ...pointOnInk,
+        delay: Math.min(.64, index / seedCount * .44 + Math.random() * .2),
+        size: (13 + Math.random() * 25) * ratioRef.current,
+        wobble: Math.random() * Math.PI * 2,
+      };
+    });
     const start = performance.now();
     let lastPaint = 0;
     const burn = (time) => {
       if (economical && time - lastPaint < 30) { burnFrameRef.current = requestAnimationFrame(burn); return; }
       lastPaint = time;
-      const progress = Math.min(1, (time - start) / 2600);
-      context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(snapshot, 0, 0);
+      const progress = Math.min(1, (time - start) / 3000);
+      context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height);
+      context.save();
+      context.globalAlpha = progress > .76 ? Math.max(0, 1 - (progress - .76) / .24) : 1;
+      context.drawImage(snapshot, 0, -progress * 5 * ratioRef.current);
+      context.restore();
       seeds.forEach((seed) => {
         const local = Math.max(0, Math.min(1, (progress - seed.delay) / (1 - seed.delay)));
         if (!local) return;
-        const eased = 1 - Math.pow(1 - local, 2.4); const radius = eased * seed.size;
+        const eased = 1 - Math.pow(1 - local, 2.6); const radius = eased * seed.size;
+        const x = seed.x + Math.sin(seed.wobble + local * 5) * 2.5 * ratioRef.current;
+        const y = seed.y - local * 8 * ratioRef.current + Math.cos(seed.wobble + local * 4) * 2 * ratioRef.current;
         context.save(); context.globalCompositeOperation = "source-atop";
-        const glow = context.createRadialGradient(seed.x, seed.y, Math.max(0, radius - 14 * ratioRef.current), seed.x, seed.y, radius + 10 * ratioRef.current);
-        glow.addColorStop(0, "rgba(66,49,43,0)"); glow.addColorStop(.62, "rgba(95,57,43,.54)"); glow.addColorStop(.84, "rgba(224,93,51,.92)"); glow.addColorStop(1, "rgba(245,171,103,0)");
+        const glow = context.createRadialGradient(x, y, Math.max(0, radius - 5 * ratioRef.current), x, y, radius + 7 * ratioRef.current);
+        glow.addColorStop(0, "rgba(62,48,43,0)"); glow.addColorStop(.5, "rgba(118,61,43,.34)"); glow.addColorStop(.78, "rgba(225,91,49,.94)"); glow.addColorStop(1, "rgba(247,171,103,0)");
         context.fillStyle = glow; context.fillRect(0, 0, canvas.width, canvas.height); context.restore();
-        context.save(); context.globalCompositeOperation = "destination-out"; context.beginPath(); context.arc(seed.x, seed.y, Math.max(0, radius - 8 * ratioRef.current), 0, Math.PI * 2); context.fill(); context.restore();
+        context.save(); context.globalCompositeOperation = "destination-out"; context.beginPath();
+        const points = economical ? 7 : 10;
+        for (let i = 0; i < points; i += 1) {
+          const angle = i / points * Math.PI * 2;
+          const irregular = Math.max(0, radius - 3 * ratioRef.current) * (.72 + .3 * Math.sin(seed.wobble + i * 2.17));
+          const px = x + Math.cos(angle) * irregular; const py = y + Math.sin(angle) * irregular;
+          if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+        }
+        context.closePath(); context.fill(); context.restore();
       });
       if (progress < 1) burnFrameRef.current = requestAnimationFrame(burn);
       else { context.clearRect(0, 0, canvas.width, canvas.height); context.setTransform(ratioRef.current, 0, 0, ratioRef.current, 0, 0); completeRef.current(); }
@@ -554,7 +608,8 @@ function BurnPage() {
   const [embers, setEmbers] = useState([]);
   const [drawingPresent, setDrawingPresent] = useState(false);
   const [burning, setBurning] = useState(false);
-  const [anchor, setAnchor] = useState({ x: 24, y: 30 });
+  const [resetReady, setResetReady] = useState(true);
+  const [anchor, setAnchor] = useState({ x: 24, y: 30, side: "left", width: 300, right: 0 });
   const inputRef = useRef(null);
   const ignite = (value = draft) => {
     const clean = value.trim();
@@ -563,18 +618,25 @@ function BurnPage() {
     const id = createId();
     const origins = Array.from({ length: Math.min(6, Math.max(3, Math.ceil(clean.length / 12))) }, () => Math.floor(Math.random() * clean.length));
     const chars = [...clean].map((char, index) => ({ char, delay: Math.min(...origins.map((origin) => Math.abs(origin - index) * (22 + Math.random() * 18))) + Math.random() * 180, driftX: Math.round((Math.random() - .5) * 28), driftY: -12 - Math.round(Math.random() * 30), rotate: Math.round((Math.random() - .5) * 16) }));
-    setBurning(true); setEmbers([{ id, chars }]);
+    const burnDuration = Math.ceil(Math.max(...chars.map((item) => item.delay), 0) + 2550);
+    setResetReady(false); setBurning(true); setEmbers([{ id, chars }]);
     setDraft("");
-    window.setTimeout(() => { setEmbers([]); setBurning(false); }, 3000);
+    window.setTimeout(() => {
+      setEmbers([]); setBurning(false);
+      window.setTimeout(() => setResetReady(true), 120);
+    }, burnDuration);
   };
   const freePlacement = settings.burnInputLayout === "free";
   const placeCursor = (event) => {
     if (mode !== "type" || draft || burning || event.target.closest("button")) return;
     if (freePlacement) {
       const rect = event.currentTarget.getBoundingClientRect();
-      setAnchor({ x: Math.max(12, Math.min(rect.width - 180, event.clientX - rect.left)), y: Math.max(18, Math.min(rect.height - 120, event.clientY - rect.top)) });
+      const rawX = Math.max(16, Math.min(rect.width - 16, event.clientX - rect.left));
+      const side = rawX > rect.width * .68 ? "right" : "left";
+      const available = side === "right" ? rawX - 12 : rect.width - rawX - 12;
+      setAnchor({ x: rawX, y: Math.max(18, Math.min(rect.height - 120, event.clientY - rect.top)), side, width: Math.max(120, Math.min(300, available)), right: Math.max(12, rect.width - rawX) });
     } else {
-      setAnchor({ x: 24, y: 30 });
+      setAnchor({ x: 24, y: 30, side: "left", width: 300, right: 0 });
     }
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -583,67 +645,161 @@ function BurnPage() {
       <TopLevelIntro title={["写下再放下", "让它化作余烬"]} subtitle="不会保存，也不会发送。" section="阅后即焚" />
       <div className="burn-mode-switch" role="tablist" aria-label="输入方式"><button role="tab" aria-selected={mode === "type"} onClick={() => { setMode("type"); setBurning(false); setDrawingPresent(false); }}>键入</button><button role="tab" aria-selected={mode === "draw"} onClick={() => { setMode("draw"); setBurning(false); setDrawingPresent(false); }}>手写</button></div>
       <div className={`burn-canvas ${burning ? "is-burning" : ""} ${freePlacement ? "is-free-placement" : "is-fixed-placement"}`} onPointerDown={placeCursor}>
-        {mode === "type" && freePlacement && !draft && !burning && <span className="burn-placeholder" aria-hidden="true">轻触任意位置，写下一句。</span>}
-        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder={freePlacement ? "" : "从这里，写下想放下的内容。"} style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px` }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); }} />}
-        {embers.map((ember) => <p className="burn-ember" key={ember.id} style={{ left: anchor.x, top: anchor.y }}>{ember.chars.map((item, index) => <span key={`${item.char}-${index}`} style={{ animationDelay: `${item.delay}ms`, "--drift-x": `${item.driftX}px`, "--drift-y": `${item.driftY}px`, "--burn-rotate": `${item.rotate}deg` }}>{item.char}</span>)}</p>)}
+        {mode === "type" && !draft && !burning && resetReady && <span className={`burn-placeholder ${freePlacement ? "is-free" : "is-fixed"}`} aria-hidden="true">{freePlacement ? "轻触任意位置，写下一句。" : "从这里，写下想放下的内容。"}</span>}
+        {mode === "type" ? <textarea ref={inputRef} value={draft} inputMode="text" onChange={(event) => setDraft(event.target.value)} aria-label="写下想放下的内容" autoComplete="off" spellCheck="false" placeholder="" style={{ "--burn-x": `${anchor.x}px`, "--burn-y": `${anchor.y}px`, "--burn-left": anchor.side === "right" ? "auto" : `${anchor.x}px`, "--burn-right": anchor.side === "right" ? `${anchor.right}px` : "auto", "--burn-width": `${anchor.width}px`, "--burn-text-align": anchor.side }} /> : <HandwritingBurn burning={burning} onContent={setDrawingPresent} onBurnComplete={() => { setBurning(false); setDrawingPresent(false); setResetReady(false); window.setTimeout(() => setResetReady(true), 180); }} />}
+        {embers.map((ember) => <p className="burn-ember" key={ember.id} style={{ left: anchor.side === "right" ? "auto" : anchor.x, right: anchor.side === "right" ? `calc(100% - ${anchor.x}px)` : "auto", width: anchor.width, textAlign: anchor.side }}>{ember.chars.map((item, index) => <span key={`${item.char}-${index}`} style={{ animationDelay: `${item.delay}ms`, "--drift-x": `${item.driftX}px`, "--drift-y": `${item.driftY}px`, "--burn-rotate": `${item.rotate}deg` }}>{item.char}</span>)}</p>)}
       </div>
       <AnimatePresence>{((mode === "type" && draft.trim()) || (mode === "draw" && drawingPresent)) && !burning && <motion.button className="ignite-action" data-feedback="confirm" onClick={() => ignite()} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}>让它消散</motion.button>}</AnimatePresence>
     </main>
   );
 }
 
+function useEncounterAudio(track) {
+  const audioRef = useRef(null);
+  const loadTimeoutRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!track) return undefined;
+    const audio = new Audio(track.src);
+    audio.preload = "metadata";
+    audio.loop = Boolean(track.loop);
+    audio.volume = track.category === "noise" ? .34 : .56;
+    const onTime = () => setElapsed(audio.currentTime || 0);
+    const onEnded = () => setPlaying(false);
+    const clearLoadTimeout = () => {
+      if (loadTimeoutRef.current) window.clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    };
+    const onError = () => { clearLoadTimeout(); setPlaying(false); setLoading(false); setFailed(true); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audioRef.current = audio;
+    setElapsed(0); setFailed(false); setPlaying(false);
+    return () => {
+      clearLoadTimeout();
+      audio.pause(); audio.removeAttribute("src"); audio.load();
+      audio.removeEventListener("timeupdate", onTime); audio.removeEventListener("ended", onEnded); audio.removeEventListener("error", onError);
+    };
+  }, [track]);
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio || loading) return;
+    if (audio.paused) {
+      setFailed(false); setLoading(true);
+      if (loadTimeoutRef.current) window.clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = window.setTimeout(() => {
+        audio.pause();
+        setFailed(true); setPlaying(false); setLoading(false);
+        loadTimeoutRef.current = null;
+      }, 9000);
+      audio.play().then(() => {
+        if (loadTimeoutRef.current) window.clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+        setPlaying(true); setLoading(false);
+      }).catch(() => {
+        if (loadTimeoutRef.current) window.clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+        setFailed(true); setPlaying(false); setLoading(false);
+      });
+    } else { audio.pause(); setPlaying(false); }
+  };
+  return { playing, loading, failed, elapsed, toggle };
+}
+
 function EncounterPage() {
   const navigate = useNavigate();
   const { settings, setRecords } = useData();
-  const initialTrack = useMemo(() => {
-    const locked = sessionStorage.getItem("baijing:encounter");
-    if (locked) return JSON.parse(locked);
-    const track = encounterTracks[Math.floor(Math.random() * encounterTracks.length)];
-    sessionStorage.setItem("baijing:encounter", JSON.stringify(track));
-    return track;
-  }, []);
-  const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!playing) return undefined;
-    const timer = setInterval(() => setElapsed((value) => Math.min(value + 1, initialTrack.duration)), 1000);
-    return () => clearInterval(timer);
-  }, [playing, initialTrack.duration]);
+  const [track, setTrack] = useState(null);
+  const audio = useEncounterAudio(track);
+  const choose = (category, excludeId) => {
+    const pool = encounterTracks.filter((item) => item.category === category && item.id !== excludeId);
+    const next = pool[Math.floor(Math.random() * pool.length)] ?? encounterTracks.find((item) => item.category === category);
+    setTrack(next);
+  };
   const leave = () => {
-    if (settings.recordsEnabled) setRecords((items) => [{ id: createId(), type: "encounter", at: new Date().toISOString(), duration: elapsed, completed: elapsed >= initialTrack.duration }, ...items]);
+    if (settings.recordsEnabled && track) setRecords((items) => [{ id: createId(), type: "encounter", at: new Date().toISOString(), duration: Math.round(audio.elapsed), completed: false }, ...items]);
     navigate("/");
   };
   return (
     <main className="screen encounter-screen">
       <AppHeader title="声音盲盒" back />
-      <div className="encounter-stage">
-        <span>此刻遇见</span>
-        <h1>{initialTrack.title}</h1>
-        <p>{initialTrack.note}</p>
-        <div className={`sound-rings ${playing ? "is-playing" : ""}`} aria-hidden="true"><span /><span /><span /></div>
-      </div>
-      <button className="play-button encounter-play" onClick={() => setPlaying(!playing)}>{playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
-      <p className="encounter-rule">这次不提供快进或立即重抽。你可以随时暂停或离开。</p>
-      <button className="text-action" onClick={leave}>结束并返回</button>
+      {!track ? (
+        <section className="encounter-choice">
+          <FunctionSeal>声音盲盒</FunctionSeal>
+          <h1>这一次，<br />想遇见哪一种声音？</h1>
+          <p>选择一种类型，白境会从开放许可音源中随机抽取。</p>
+          <div className="encounter-doors">
+            <button onClick={() => choose("noise")}><Waveform size={24} /><span><strong>白噪音</strong><small>连续、均匀，遮住一点环境声</small></span><CaretRight size={18} /></button>
+            <button onClick={() => choose("music")}><MusicNotes size={24} /><span><strong>纯音乐</strong><small>没有人声，让旋律慢慢经过</small></span><CaretRight size={18} /></button>
+          </div>
+        </section>
+      ) : (
+        <>
+          <div className="encounter-stage">
+            <span>{track.category === "noise" ? "白噪音" : "纯音乐"} · 随机遇见</span>
+            <h1>{track.title}</h1>
+            <p>{track.note}</p>
+            <div className={`sound-rings ${audio.playing ? "is-playing" : ""}`} aria-hidden="true"><span /><span /><span /></div>
+          </div>
+          <button className="play-button encounter-play" disabled={audio.loading} onClick={audio.toggle} aria-label={audio.loading ? "正在连接音源" : audio.playing ? "暂停" : "播放"}>{audio.playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
+          {audio.failed ? <div className="encounter-error" role="alert"><span>这个在线音源暂时无法播放。</span><button onClick={() => choose(track.category, track.id)}>换一个来源</button></div> : <p className="encounter-rule">在线播放，不保存音频。你可以随时暂停或离开。</p>}
+          <a className="encounter-source" href={track.sourceUrl} target="_blank" rel="noreferrer">{track.source} · {track.license}</a>
+          <button className="text-action" onClick={leave}>结束并返回</button>
+        </>
+      )}
     </main>
   );
 }
 
-function EmotionIndexPage() {
-  const [open, setOpen] = useState(null);
+const knowledgeEntries = knowledgeTopics.flatMap((topic) => topic.items.map((item) => ({ ...item, group: topic.group })));
+
+function PsychologyLibraryPage() {
   return (
     <main className="screen index-screen">
-      <AppHeader title="情绪索引" back />
-      <section className="detail-hero compact">
-        <FunctionSeal>心理知识索引</FunctionSeal>
+      <AppHeader title="心理学文库" back />
+      <section className="detail-hero compact psychology-library-hero">
+        <FunctionSeal>心理学文库</FunctionSeal>
         <h1>理解正在发生什么，<br />不急着给自己下结论。</h1>
+        <p>24 个心理学主题，整理自项目内 121 条研究、综述与权威公共资料。内容用于心理教育，不用于诊断。</p>
       </section>
       {knowledgeTopics.map((topic) => <section className="knowledge-group" key={topic.group}><h2>{topic.group}</h2><div className="term-list">{topic.items.map((item) => (
-        <article key={item.term} className={open === item.term ? "is-open" : ""}>
-          <button onClick={() => setOpen(open === item.term ? null : item.term)} aria-expanded={open === item.term}><span>{item.term}</span><CaretDown size={18} /></button>
-          {open === item.term && <div className="knowledge-entry"><p>{item.summary}</p><p className="knowledge-myth"><strong>常见误解</strong>{item.myth}</p><footer><span>{item.evidence}</span><cite>{item.source}</cite></footer></div>}
-        </article>
+        <Link key={item.id} className="knowledge-link" to={`/psychology-library/${item.id}`}>
+          <span><strong>{item.term}</strong><small>{item.summary}</small></span>
+          <span className="knowledge-evidence">{item.evidence}</span>
+          <CaretRight size={18} />
+        </Link>
       ))}</div></section>)}
+    </main>
+  );
+}
+
+function PsychologyArticlePage() {
+  const { articleId } = useParams();
+  const item = knowledgeEntries.find((entry) => entry.id === articleId) ?? knowledgeEntries[0];
+  return (
+    <main className="screen psychology-article-screen">
+      <AppHeader title={item.term} back />
+      <article className="psychology-article">
+        <header>
+          <span>{item.group} · {item.evidence}</span>
+          <h1>{item.term}</h1>
+          <p>{item.summary}</p>
+        </header>
+        <section><h2>它如何发生</h2><p>{item.mechanism}</p></section>
+        <section><h2>日常中可能怎样出现</h2><ul>{item.signs?.map((sign) => <li key={sign}>{sign}</li>)}</ul></section>
+        <section><h2>可以尝试怎样观察</h2><p>{item.practice}</p></section>
+        <aside><strong>常见误解</strong><p>{item.myth}</p></aside>
+        <section><h2>需要保留的边界</h2><p>{item.boundary}</p></section>
+        <footer>
+          <span>主要参考</span>
+          <cite>{item.source}</cite>
+          <p>证据等级沿用项目文献库标注。本文是面向公众的概念解释，不构成医学或心理诊断。</p>
+        </footer>
+      </article>
     </main>
   );
 }
@@ -651,10 +807,10 @@ function EmotionIndexPage() {
 function RecordsPage() {
   const { records, setRecords, settings } = useData();
   return (
-    <main className="screen library-screen">
+    <main className="screen library-screen records-screen">
       <TopLevelIntro title={["时间会经过，", "不必留下痕迹。"]} subtitle="记录默认关闭，只有你主动开启后才会留下片刻。" section="时间流转" />
       {!settings.recordsEnabled ? (
-        <div className="empty-state records-empty"><ClockCounterClockwise size={28} /><p>白境会守护你的隐私。需要时，你可以在设置中主动开启记录。</p><Link className="empty-cta" to="/settings">前往设置</Link></div>
+        <div className="records-privacy-note"><ClockCounterClockwise size={25} /><p>白境会守护你的隐私。<br />需要时，可以在设置中主动开启记录。</p></div>
       ) : records.length === 0 ? (
         <div className="empty-state"><ClockCounterClockwise size={28} /><h1>还没有记录</h1><p>等你完成一次状态调整，这里才会留下时间与反馈。你在阅后即焚里写下的内容，始终不会被保存。</p></div>
       ) : (
@@ -664,23 +820,12 @@ function RecordsPage() {
   );
 }
 
-function FavoritesPage() {
-  const { favorites, setFavorites } = useData();
-  const items = states.filter((state) => favorites.includes(state.id));
-  return (
-    <main className="screen library-screen">
-      <AppHeader title="收藏" back />
-      {items.length === 0 ? <div className="empty-state"><Heart size={28} /><h1>还没有收藏</h1><p>在冥想室中收藏的内容会出现在这里。</p></div> : <div className="favorite-list">{items.map((state) => <article key={state.id}><div><span>{state.term}</span><strong>{state.title}</strong><p>{state.affirmation}</p></div><button onClick={() => setFavorites((ids) => ids.filter((id) => id !== state.id))} aria-label="取消收藏"><Heart size={20} weight="fill" /></button></article>)}</div>}
-    </main>
-  );
-}
-
 function Toggle({ checked, onChange, label }) {
   return <button className={`toggle ${checked ? "is-on" : ""}`} onClick={() => onChange(!checked)} role="switch" aria-checked={checked} aria-label={label}><span /></button>;
 }
 
 function SettingsPage() {
-  const { settings, setSettings, setRecords, setFavorites } = useData();
+  const { settings, setSettings, setRecords } = useData();
   const getFullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
   const [fullscreenActive, setFullscreenActive] = useState(Boolean(getFullscreenElement()));
   const update = (key, value) => setSettings({ ...settings, [key]: value });
@@ -709,8 +854,8 @@ function SettingsPage() {
     }
   };
   const clearData = () => {
-    if (window.confirm("清除所有记录、收藏和偏好？这个操作不能撤销。")) {
-      setRecords([]); setFavorites([]);
+    if (window.confirm("清除所有记录和偏好？这个操作不能撤销。")) {
+      setRecords([]);
       localStorage.clear();
       window.location.reload();
     }
@@ -721,8 +866,7 @@ function SettingsPage() {
       <section className="menu-hub" aria-label="其他功能">
         <h2>内容与工具</h2>
         <Link to="/encounter"><DiceThree size={20} /><span><strong>声音盲盒</strong><small>让此刻随机遇见一段声音</small></span><ArrowRight size={16} /></Link>
-        <Link to="/emotion-index"><BookOpenText size={20} /><span><strong>情绪索引</strong><small>阅读克制、非诊断式的心理词条</small></span><ArrowRight size={16} /></Link>
-        <Link to="/favorites"><Heart size={20} /><span><strong>收藏</strong><small>保留想再次使用的内容</small></span><ArrowRight size={16} /></Link>
+        <Link to="/psychology-library"><BookOpenText size={20} /><span><strong>心理学文库</strong><small>从研究与综述中理解心理概念</small></span><ArrowRight size={16} /></Link>
       </section>
       <section className="settings-group">
         <h2>外观与显示</h2>
@@ -736,14 +880,13 @@ function SettingsPage() {
         <div className="setting-choice-row">
           <div><strong>键入位置</strong><span>阅后即焚中的文字起点</span></div>
           <div className="segmented-control compact" aria-label="阅后即焚键入位置">
-            {[["fixed", "固定区域"], ["free", "自由落字"]].map(([value, label]) => <button key={value} className={(settings.burnInputLayout ?? "fixed") === value ? "is-selected" : ""} onClick={() => update("burnInputLayout", value)}>{label}</button>)}
+            {[["fixed", "固定区域"], ["free", "自由落字"]].map(([value, label]) => {
+              const selected = (settings.burnInputLayout ?? "fixed") === value;
+              return <button key={value} aria-pressed={selected} className={selected ? "is-selected" : ""} onClick={() => update("burnInputLayout", value)}>{selected && <Check size={14} weight="bold" />}{label}</button>;
+            })}
           </div>
         </div>
         {[["haptics", "轻触反馈"], ["breathing", "呼吸提示"], ["reducedEffects", "降低动效"]].map(([key, label]) => <div className="setting-row" key={key}><div><strong>{label}</strong><span>可随时调整</span></div><Toggle checked={settings[key]} onChange={(value) => update(key, value)} label={label} /></div>)}
-      </section>
-      <section className="settings-group">
-        <h2>环境能力</h2>
-        <div className="setting-row"><div><strong>盲盒使用天气信息</strong><span>需要时再请求定位权限</span></div><Toggle checked={settings.weather} onChange={(value) => update("weather", value)} label="盲盒使用天气信息" /></div>
       </section>
       <section className="settings-group privacy-block">
         <h2>记录与隐私</h2>
@@ -811,7 +954,7 @@ function ThemeEffect() {
       lastFeedbackRef.current = now;
       const kind = target.dataset.feedback || "soft";
       const duration = kind === "confirm" ? 16 : kind === "selection" ? 11 : 8;
-      if (typeof navigator.vibrate === "function" && navigator.vibrate(duration)) return;
+      navigator.vibrate?.(duration);
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       const context = feedbackContextRef.current || new AudioContext();
@@ -922,9 +1065,10 @@ function AppRoutes() {
         <Route path="/completion/:stateId" element={<CompletionPage />} />
         <Route path="/burn" element={<BurnPage />} />
         <Route path="/encounter" element={<EncounterPage />} />
-        <Route path="/emotion-index" element={<EmotionIndexPage />} />
+        <Route path="/psychology-library" element={<PsychologyLibraryPage />} />
+        <Route path="/psychology-library/:articleId" element={<PsychologyArticlePage />} />
+        <Route path="/emotion-index" element={<Navigate to="/psychology-library" replace />} />
         <Route path="/records" element={<RecordsPage />} />
-        <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes></motion.div></AnimatePresence>
       <PersistentTabBar />
