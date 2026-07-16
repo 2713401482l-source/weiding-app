@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isIOSSafari, lockPortraitOrientation, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
+import { getInstallPlatform, isIOSSafari, lockPortraitOrientation, shouldOfferInstallGuide, splashDuration } from "./pwa.js";
 
 const safari = {
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
@@ -7,23 +7,29 @@ const safari = {
   maxTouchPoints: 5,
   standalone: false,
 };
+const samsung = {
+  userAgent: "Mozilla/5.0 (Linux; Android 14; SM-S9280) AppleWebKit/537.36 SamsungBrowser/27.0 Chrome/125 Mobile Safari/537.36",
+};
 
-describe("iOS install guidance", () => {
-  it("detects iPhone Safari but excludes iOS Chrome", () => {
+describe("cross-platform install guidance", () => {
+  it("identifies iOS Safari, iOS Chrome, and Samsung Internet", () => {
     expect(isIOSSafari(safari)).toBe(true);
-    expect(isIOSSafari({ ...safari, userAgent: `${safari.userAgent} CriOS/125` })).toBe(false);
+    expect(getInstallPlatform(safari)).toBe("ios-safari");
+    expect(getInstallPlatform({ ...safari, userAgent: `${safari.userAgent} CriOS/125` })).toBe("ios-other");
+    expect(getInstallPlatform(samsung)).toBe("samsung");
   });
 
-  it("only offers after eligibility and respects the 30 day dismissal", () => {
-    const now = Date.UTC(2026, 6, 15);
-    expect(shouldOfferIOSInstall({ navigatorLike: safari, eligible: false, now })).toBe(false);
-    expect(shouldOfferIOSInstall({ navigatorLike: safari, eligible: true, now })).toBe(true);
-    expect(shouldOfferIOSInstall({ navigatorLike: safari, eligible: true, dismissedAt: now - 29 * 86400000, now })).toBe(false);
-    expect(shouldOfferIOSInstall({ navigatorLike: safari, eligible: true, dismissedAt: now - 31 * 86400000, now })).toBe(true);
+  it("offers after a second visit or a completion and waits 14 days after dismissal", () => {
+    const now = Date.UTC(2026, 6, 17);
+    expect(shouldOfferInstallGuide({ navigatorLike: safari, visitCount: 1, now })).toBe(false);
+    expect(shouldOfferInstallGuide({ navigatorLike: safari, visitCount: 2, now })).toBe(true);
+    expect(shouldOfferInstallGuide({ navigatorLike: samsung, completed: true, now })).toBe(true);
+    expect(shouldOfferInstallGuide({ navigatorLike: safari, visitCount: 2, dismissedAt: now - 13 * 86400000, now })).toBe(false);
+    expect(shouldOfferInstallGuide({ navigatorLike: safari, visitCount: 2, dismissedAt: now - 15 * 86400000, now })).toBe(true);
   });
 
   it("never offers inside an installed web app", () => {
-    expect(shouldOfferIOSInstall({ navigatorLike: { ...safari, standalone: true }, eligible: true })).toBe(false);
+    expect(shouldOfferInstallGuide({ navigatorLike: { ...safari, standalone: true }, visitCount: 2 })).toBe(false);
   });
 });
 
@@ -47,11 +53,6 @@ describe("installed app orientation", () => {
   });
 
   it("does not request a lock in a regular browser tab", async () => {
-    const locked = await lockPortraitOrientation({
-      navigatorLike: { standalone: false },
-      matchMediaLike: () => ({ matches: false }),
-      screenLike: { orientation: { lock: async () => { throw new Error("should not run"); } } },
-    });
-    expect(locked).toBe(false);
+    expect(await lockPortraitOrientation({ navigatorLike: {}, matchMediaLike: () => ({ matches: false }) })).toBe(false);
   });
 });

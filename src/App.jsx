@@ -37,7 +37,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { getFeedbackAudioState, getFeedbackHapticDuration, playInteractionFeedback, playRailFeedback, resolveInteractionFeedback, unlockFeedbackAudio } from "./audioFeedback.js";
 import { encounterTracks, knowledgeTopics, states } from "./data.js";
 import { guidedAudioPool } from "./guidedAudio.js";
-import { isIOSSafari, lockPortraitOrientation, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
+import { createInstallHandoff, mergeInstallHandoff, parseInstallHandoff } from "./installHandoff.js";
+import { getInstallPlatform, isMobileInstallBrowser, isStandaloneApp, lockPortraitOrientation, shouldOfferInstallGuide, splashDuration } from "./pwa.js";
 import { createMeditationRecord, getFeedbackLabel, getRecordScene, getRecordState, getRecordSummary, getRecordTitle } from "./records.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 
@@ -578,6 +579,7 @@ function CompletionPage() {
     if (feedback) return;
     setFeedback(value);
     try { localStorage.setItem("weiding:install-eligible", "1"); } catch {}
+    window.dispatchEvent(new CustomEvent("weiding:install-eligible"));
     if (settings.recordsEnabled && !recordedRef.current) {
       recordedRef.current = true;
       setRecords((items) => [createMeditationRecord({
@@ -1311,14 +1313,14 @@ function SettingsPage() {
       <section className="settings-group privacy-block">
         <h2>记录与隐私</h2>
         <div className="setting-row"><div><strong>保存体验记录</strong><span>新用户默认开启，可随时关闭</span></div><Toggle checked={settings.recordsEnabled} onChange={(value) => update("recordsEnabled", value)} label="保存体验记录" /></div>
-        <p>数据只保存在当前浏览器。清除浏览器数据、卸载 PWA 或更换设备后无法恢复。</p>
+        <p>数据只保存在当前浏览器。添加到桌面前可复制接续数据；清除或更换设备后无法恢复。</p>
         <button className="danger-action" onClick={clearData}><Trash size={18} />清除所有本地数据</button>
       </section>
-      {isIOSSafari() && !navigator.standalone && (
+      {(isMobileInstallBrowser() || isStandaloneApp()) && (
         <section className="settings-group install-setting">
           <h2>桌面使用</h2>
-          <button className="install-setting-action" onClick={() => window.dispatchEvent(new CustomEvent("weiding:show-install-guide"))}>
-            <span><strong>添加到主屏幕</strong><small>像普通 App 一样从桌面打开微定</small></span>
+          <button className="install-setting-action" onClick={() => window.dispatchEvent(new CustomEvent(isStandaloneApp() ? "weiding:show-handoff-guide" : "weiding:show-install-guide"))}>
+            <span><strong>{isStandaloneApp() ? "接续浏览器数据" : "添加到主屏幕"}</strong><small>{isStandaloneApp() ? "导入安装前复制的记录与设置" : "像普通 App 一样从桌面打开微定"}</small></span>
             <CaretRight size={17} />
           </button>
         </section>
@@ -1352,45 +1354,177 @@ function BrandSplash() {
   );
 }
 
-function IOSInstallCoachmark() {
+function InstallCoachmark() {
   const location = useLocation();
+  const { records, setRecords, settings, setSettings } = useData();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [restoreMode, setRestoreMode] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(() => window.__weidingInstallPrompt || null);
+  const [status, setStatus] = useState("");
+  const [manualTransfer, setManualTransfer] = useState("");
+  const platform = getInstallPlatform();
+  const standalone = isStandaloneApp();
+
+  useEffect(() => {
+    const onBeforeInstall = (event) => {
+      event.preventDefault();
+      setDeferredPrompt(event);
+    };
+    const onInstalled = () => {
+      setDeferredPrompt(null);
+      setOpen(false);
+      try { localStorage.setItem("weiding:install-complete", "1"); } catch {}
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
   useEffect(() => {
     const evaluate = () => {
-      let eligible = false;
+      let completed = false;
       let dismissedAt = 0;
+      let visitCount = 0;
       try {
-        eligible = localStorage.getItem("weiding:install-eligible") === "1";
+        if (sessionStorage.getItem("weiding:visit-counted") !== "1") {
+          visitCount = Number(localStorage.getItem("weiding:visit-count") || 0) + 1;
+          localStorage.setItem("weiding:visit-count", String(visitCount));
+          sessionStorage.setItem("weiding:visit-counted", "1");
+        } else visitCount = Number(localStorage.getItem("weiding:visit-count") || 0);
+        completed = localStorage.getItem("weiding:install-eligible") === "1" || records.length > 0;
         dismissedAt = Number(localStorage.getItem("weiding:install-dismissed-at") || 0);
       } catch {}
-      if (location.pathname === "/" && shouldOfferIOSInstall({ eligible, dismissedAt })) setOpen(true);
+      if (["/", "/records"].includes(location.pathname) && shouldOfferInstallGuide({ visitCount, completed, dismissedAt })) {
+        setRestoreMode(false);
+        setOpen(true);
+      }
     };
-    const forceOpen = () => { if (isIOSSafari() && !navigator.standalone) { setExpanded(true); setOpen(true); } };
+    const forceOpen = () => {
+      if (!standalone && isMobileInstallBrowser()) {
+        setRestoreMode(false); setExpanded(true); setStatus(""); setOpen(true);
+      }
+    };
+    const forceRestore = () => { if (standalone) { setRestoreMode(true); setExpanded(true); setStatus(""); setOpen(true); } };
+    const onEligible = () => evaluate();
     evaluate();
     window.addEventListener("weiding:show-install-guide", forceOpen);
-    return () => window.removeEventListener("weiding:show-install-guide", forceOpen);
-  }, [location.pathname]);
+    window.addEventListener("weiding:show-handoff-guide", forceRestore);
+    window.addEventListener("weiding:install-eligible", onEligible);
+    return () => {
+      window.removeEventListener("weiding:show-install-guide", forceOpen);
+      window.removeEventListener("weiding:show-handoff-guide", forceRestore);
+      window.removeEventListener("weiding:install-eligible", onEligible);
+    };
+  }, [location.pathname, records.length, standalone]);
+
+  useEffect(() => {
+    if (!standalone || records.length > 0) return undefined;
+    let handled = false;
+    try { handled = localStorage.getItem("weiding:handoff-handled") === "1"; } catch {}
+    if (handled) return undefined;
+    const timer = window.setTimeout(() => { setRestoreMode(true); setOpen(true); }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [records.length, standalone]);
+
   const dismiss = () => {
-    try { localStorage.setItem("weiding:install-dismissed-at", String(Date.now())); } catch {}
+    try {
+      if (restoreMode) localStorage.setItem("weiding:handoff-handled", "1");
+      else localStorage.setItem("weiding:install-dismissed-at", String(Date.now()));
+    } catch {}
     setOpen(false);
     setExpanded(false);
+    setStatus("");
   };
+
+  const copyTransfer = async () => {
+    let transfer = "";
+    try {
+      transfer = createInstallHandoff({ records, settings });
+      await navigator.clipboard.writeText(transfer);
+      setStatus("接续数据已复制。添加后第一次打开微定，即可一键接续。");
+      return true;
+    } catch {
+      setManualTransfer(transfer);
+      setStatus("浏览器未允许自动复制。请长按下方接续数据并复制，再继续添加。");
+      return false;
+    }
+  };
+
+  const beginInstall = async () => {
+    await copyTransfer();
+    if (deferredPrompt) {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      if (choice?.outcome === "accepted") setOpen(false);
+      else setStatus("没有关系，之后可以随时从设置里再添加。");
+      return;
+    }
+    setExpanded(true);
+  };
+
+  const restoreTransfer = async (providedText = "") => {
+    try {
+      const text = providedText || await navigator.clipboard.readText();
+      const handoff = parseInstallHandoff(text);
+      if (!handoff) throw new Error("invalid_transfer");
+      const merged = mergeInstallHandoff(records, settings, handoff);
+      setRecords(merged.records);
+      setSettings(merged.settings);
+      localStorage.setItem("weiding:handoff-handled", "1");
+      setStatus(`已接续 ${handoff.records.length} 条记录与原有设置。`);
+      window.setTimeout(() => setOpen(false), 1200);
+    } catch {
+      setExpanded(true);
+      setStatus("没有读取到微定的接续数据。请粘贴安装前复制的内容再试一次。");
+    }
+  };
+
+  const steps = platform === "ios-safari" ? [
+    "轻触 Safari 底部的“分享”按钮",
+    "向下找到“添加到主屏幕”",
+    "确认名称后，轻触右上角“添加”",
+  ] : platform === "ios-other" ? [
+    "打开浏览器的分享菜单",
+    "选择“添加到主屏幕”",
+    "若没有该选项，请改用 Safari 打开微定",
+  ] : [
+    "轻触浏览器菜单",
+    "选择“添加到主屏幕”或“安装应用”",
+    "确认后，微定会出现在桌面",
+  ];
+
   return (
     <AnimatePresence>
       {open && (
-        <motion.aside className={`install-coachmark ${expanded ? "is-expanded" : ""}`} aria-label="添加微定到主屏幕" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: .24, ease: [0.22, 1, 0.36, 1] }}>
-          <button className="install-dismiss" onClick={dismiss} aria-label="暂不添加"><X size={17} /></button>
+        <motion.aside className={`install-coachmark ${expanded ? "is-expanded" : ""}`} aria-label={restoreMode ? "接续微定数据" : "添加微定到主屏幕"} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: .24, ease: [0.22, 1, 0.36, 1] }}>
+          <button className="install-dismiss" onClick={dismiss} aria-label={restoreMode ? "暂不接续" : "暂不添加"}><X size={17} /></button>
           <BrandMark className="install-brand-mark" title="" />
           <div className="install-coachmark-copy">
-            <strong>如果愿意，可以把微定留在桌面。</strong>
-            {!expanded ? <button onClick={() => setExpanded(true)}>查看方法</button> : (
-              <ol>
-                <li><span>1</span>轻触 Safari 的“分享”按钮</li>
-                <li><span>2</span>选择“添加到主屏幕”</li>
-                <li><span>3</span>开启“作为网页 App 打开”并添加</li>
-              </ol>
-            )}
+            <strong>{restoreMode ? "接续浏览器里的记录与设置。" : "把微定留在桌面，下次少一步打扰。"}</strong>
+            {!expanded && !restoreMode && <button onClick={() => setExpanded(true)}>查看添加方法</button>}
+            {expanded && !restoreMode && <>
+              {!deferredPrompt && <ol>{steps.map((step, index) => <li key={step}><span>{index + 1}</span>{step}</li>)}</ol>}
+              <button className="install-primary-action" onClick={beginInstall}>{deferredPrompt ? "添加到桌面" : "复制接续数据并准备添加"}</button>
+              {manualTransfer && status.includes("未允许") && <div className="install-export-fallback">
+                <label htmlFor="install-export-transfer">接续数据</label>
+                <textarea id="install-export-transfer" readOnly value={manualTransfer} rows="2" onFocus={(event) => event.currentTarget.select()} />
+              </div>}
+            </>}
+            {restoreMode && <>
+              <p className="install-helper">接续数据只在你的剪贴板和设备之间传递，不会上传。</p>
+              <button className="install-primary-action" onClick={() => restoreTransfer()}>从剪贴板接续</button>
+              {expanded && <div className="install-manual-transfer">
+                <label htmlFor="install-transfer">也可以手动粘贴</label>
+                <textarea id="install-transfer" value={manualTransfer} onChange={(event) => setManualTransfer(event.target.value)} rows="2" />
+                <button disabled={!manualTransfer.trim()} onClick={() => restoreTransfer(manualTransfer)}>确认接续</button>
+              </div>}
+            </>}
+            {status && <p className="install-status" role="status" aria-live="polite">{status}</p>}
           </div>
         </motion.aside>
       )}
@@ -1595,7 +1729,7 @@ function AppRoutes() {
         <Route path="/records/:recordId" element={<RecordDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes></motion.div></AnimatePresence>
-      <IOSInstallCoachmark />
+      <InstallCoachmark />
       <PersistentTabBar />
     </div>
   );

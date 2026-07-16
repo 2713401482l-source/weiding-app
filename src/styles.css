@@ -304,7 +304,11 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
   border-radius:14px;
   background:color-mix(in srgb,var(--surface) 96%,var(--bg));
   box-shadow:0 8px 16px rgb(0 0 0/.18);
+  max-height:min(68vh,560px);
+  overflow:auto;
+  border:1px solid color-mix(in srgb,var(--line-strong) 34%,transparent);
 }
+.install-coachmark.is-expanded{padding-top:18px;padding-bottom:18px;background:color-mix(in srgb,var(--surface) 98%,var(--bg))}
 .install-brand-mark{width:36px;height:36px;margin-top:2px}
 .install-dismiss{position:absolute;right:8px;top:8px;width:36px;height:36px;border:0;background:transparent;display:grid;place-items:center;color:var(--muted);cursor:pointer}
 .install-coachmark-copy{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
@@ -313,6 +317,16 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
 .install-coachmark ol{list-style:none;margin:2px 0 4px;padding:0;display:grid;gap:9px;color:var(--muted);font-family:var(--font-ui);font-size:11px;line-height:1.5}
 .install-coachmark li{display:grid;grid-template-columns:20px 1fr;gap:7px;align-items:start}
 .install-coachmark li span{width:18px;height:18px;border:1px solid var(--line-strong);border-radius:50%;display:grid;place-items:center;color:var(--accent);font-size:9px}
+.install-coachmark-copy .install-primary-action{width:100%;min-height:44px;padding:0 14px;border:1px solid color-mix(in srgb,var(--accent) 68%,transparent);border-radius:999px;background:color-mix(in srgb,var(--accent) 7%,transparent);color:var(--accent);transition:background .18s ease,transform .18s ease}
+.install-coachmark-copy .install-primary-action:active{transform:scale(.98);background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.install-helper,.install-status{margin:0;color:var(--muted);font-family:var(--font-ui);font-size:10px;line-height:1.65}
+.install-status{color:var(--accent)}
+.install-manual-transfer,.install-export-fallback{width:100%;display:grid;gap:7px;padding-top:4px}
+.install-manual-transfer label,.install-export-fallback label{color:var(--muted);font-family:var(--font-ui);font-size:10px}
+.install-manual-transfer textarea,.install-export-fallback textarea{width:100%;resize:none;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--ink);font:10px/1.5 var(--font-ui);outline:none}
+.install-manual-transfer textarea:focus,.install-export-fallback textarea:focus{border-color:color-mix(in srgb,var(--accent) 66%,var(--line))}
+.install-manual-transfer button{justify-self:end;min-width:76px;min-height:36px;border:0;border-radius:999px;background:transparent;color:var(--accent);font:11px var(--font-ui);cursor:pointer}
+.install-manual-transfer button:disabled{opacity:.38;cursor:default}
 .install-setting-action{width:100%;min-height:64px;padding:10px 0;border:0;background:transparent;display:grid;grid-template-columns:1fr auto;align-items:center;text-align:left;cursor:pointer}
 .install-setting-action>span{display:flex;flex-direction:column;gap:5px}
 .install-setting-action strong{font-family:var(--font-ui);font-size:13px;font-weight:500}
