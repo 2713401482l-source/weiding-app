@@ -34,7 +34,7 @@ import {
   useParams,
 } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { getFeedbackAudioState, playInteractionFeedback, playRailFeedback, unlockFeedbackAudio } from "./audioFeedback.js";
+import { getFeedbackAudioState, getFeedbackHapticDuration, playInteractionFeedback, playRailFeedback, resolveInteractionFeedback, unlockFeedbackAudio } from "./audioFeedback.js";
 import { encounterTracks, knowledgeTopics, states } from "./data.js";
 import { guidedAudioPool } from "./guidedAudio.js";
 import { isIOSSafari, lockPortraitOrientation, shouldOfferIOSInstall, splashDuration } from "./pwa.js";
@@ -259,6 +259,7 @@ function CanvasPage() {
               role="option"
               aria-selected={selectedIndex === index}
               className={`state-title-row ${selectedIndex === index ? "is-selected" : ""}`}
+              data-feedback={selectedIndex === index ? "navigate" : "selectOn"}
               onClick={() => selectedIndex === index ? navigate(`/states/${state.id}`) : setSelectedIndex(index)}
             >
               <span className="state-name-line"><span>{state.title}</span></span>
@@ -547,7 +548,7 @@ function MeditationPage() {
             </motion.div>
           )}
         </AnimatePresence>
-        <motion.button layout transition={controlLayoutTransition} className={`control-reveal ${controlsOpen ? "is-open" : ""}`} onClick={() => setControlsOpen((open) => !open)} aria-label={controlsOpen ? "收起播放控制" : "显示播放控制"} aria-expanded={controlsOpen}>
+        <motion.button layout transition={controlLayoutTransition} className={`control-reveal ${controlsOpen ? "is-open" : ""}`} data-feedback={controlsOpen ? "dismiss" : "selectOn"} onClick={() => setControlsOpen((open) => !open)} aria-label={controlsOpen ? "收起播放控制" : "显示播放控制"} aria-expanded={controlsOpen}>
           <SlidersHorizontal size={21} />
           <span>{controlsOpen ? "收起控制" : "播放控制"}</span>
         </motion.button>
@@ -971,8 +972,8 @@ function EncounterPage() {
           <h1>这一次，<br />想遇见哪一种声音？</h1>
           <p>选择一种类型。自然声来自精选实录，每次播放还会有一点不重复的细节。</p>
           <div className="encounter-doors">
-            <button onClick={() => choose("nature")}><Waveform size={24} /><span><strong>自然声</strong><small>细雨、篝火、海浪与林间声音</small></span><CaretRight size={18} /></button>
-            <button onClick={() => choose("music")}><MusicNotes size={24} /><span><strong>纯音乐</strong><small>没有人声，让旋律慢慢经过</small></span><CaretRight size={18} /></button>
+            <button data-feedback="confirm" onClick={() => choose("nature")}><Waveform size={24} /><span><strong>自然声</strong><small>细雨、篝火、海浪与林间声音</small></span><CaretRight size={18} /></button>
+            <button data-feedback="confirm" onClick={() => choose("music")}><MusicNotes size={24} /><span><strong>纯音乐</strong><small>没有人声，让旋律慢慢经过</small></span><CaretRight size={18} /></button>
           </div>
         </section>
       ) : (
@@ -985,7 +986,7 @@ function EncounterPage() {
           </div>
           <button className="play-button encounter-play" disabled={audio.loading} onClick={audio.toggle} aria-label={audio.loading ? "正在连接音源" : audio.playing ? "暂停" : "播放"}>{audio.playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
           {audio.failed && <div className="encounter-error" role="alert"><span>这个声音暂时没有准备好。</span><button onClick={() => choose(track.category, track.id)}>换一个声音</button></div>}
-          <button className="text-action" onClick={leave}>结束并回到主页</button>
+          <button className="text-action" data-feedback="dismiss" onClick={leave}>结束并回到主页</button>
         </>
       )}
     </main>
@@ -1273,7 +1274,7 @@ function SettingsPage() {
       <section className="settings-group">
         <h2>外观与显示</h2>
         <div className="segmented-control">
-          {[["system", "跟随系统", GearSix], ["light", "浅色", Sun], ["dark", "深色", Moon]].map(([value, label, Icon]) => <button key={value} className={settings.theme === value ? "is-selected" : ""} onClick={() => update("theme", value)}><Icon size={17} />{label}</button>)}
+          {[["system", "跟随系统", GearSix], ["light", "浅色", Sun], ["dark", "深色", Moon]].map(([value, label, Icon]) => <button key={value} data-feedback="selectOn" className={settings.theme === value ? "is-selected" : ""} onClick={() => update("theme", value)}><Icon size={17} />{label}</button>)}
         </div>
         <div className="setting-row"><div><strong>全屏模式</strong><span>隐藏浏览器界面，更专注地体验</span></div><Toggle checked={fullscreenActive} onChange={toggleFullscreen} label="全屏模式" /></div>
         <div className="setting-row"><div><strong>降低动效</strong><span>减少动态细节与视觉变化</span></div><Toggle checked={settings.reducedEffects} onChange={(value) => update("reducedEffects", value)} label="降低动效" /></div>
@@ -1302,7 +1303,7 @@ function SettingsPage() {
           <div className="segmented-control compact" aria-label="阅后即焚键入位置">
             {[["fixed", "固定区域"], ["free", "自由落字"]].map(([value, label]) => {
               const selected = (settings.burnInputLayout ?? "fixed") === value;
-              return <button key={value} aria-pressed={selected} className={selected ? "is-selected" : ""} onClick={() => update("burnInputLayout", value)}>{selected && <Check size={14} weight="bold" />}{label}</button>;
+              return <button key={value} data-feedback="selectOn" aria-pressed={selected} className={selected ? "is-selected" : ""} onClick={() => update("burnInputLayout", value)}>{selected && <Check size={14} weight="bold" />}{label}</button>;
             })}
           </div>
         </div>
@@ -1476,8 +1477,18 @@ function ThemeEffect() {
       const now = Date.now();
       if (now - lastFeedbackRef.current < 70) return;
       lastFeedbackRef.current = now;
-      const kind = target.dataset.feedback || "soft";
-      const duration = kind === "confirm" ? 16 : kind === "selection" ? 11 : 8;
+      const kind = resolveInteractionFeedback({
+        explicit: target.dataset.feedback,
+        disabled: target.matches(":disabled, [aria-disabled='true']"),
+        role: target.getAttribute("role") || "",
+        ariaLabel: target.getAttribute("aria-label") || "",
+        text: target.textContent || "",
+        className: typeof target.className === "string" ? target.className : "",
+        href: target.getAttribute("href") || "",
+        checked: target.getAttribute("aria-checked") === "true" || target.getAttribute("aria-selected") === "true",
+      });
+      if (!kind) return;
+      const duration = getFeedbackHapticDuration(kind);
       if (settings.haptics) navigator.vibrate?.(duration);
       if (settings.interfaceSounds === false) return;
       playInteractionFeedback(kind, settings.interfaceVolume);

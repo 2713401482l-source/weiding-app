@@ -1,7 +1,17 @@
-const interactionProfiles = {
-  soft: { frequency: 560, overtone: 1.5, type: "sine", duration: 0.075, peak: 0.07 },
-  selection: { frequency: 660, overtone: 1.25, type: "triangle", duration: 0.085, peak: 0.082 },
-  confirm: { frequency: 760, overtone: 1.5, type: "triangle", duration: 0.11, peak: 0.095 },
+export const interactionProfiles = {
+  soft: { notes: [{ frequency: 520, duration: 0.07, peak: 0.066 }] },
+  navigate: { notes: [{ frequency: 440, duration: 0.065, peak: 0.07 }, { frequency: 554.37, offset: 0.045, duration: 0.075, peak: 0.075 }] },
+  selectOn: { notes: [{ frequency: 493.88, duration: 0.06, peak: 0.072 }, { frequency: 659.25, offset: 0.045, duration: 0.085, peak: 0.082 }] },
+  selectOff: { notes: [{ frequency: 587.33, duration: 0.06, peak: 0.068 }, { frequency: 440, offset: 0.045, duration: 0.075, peak: 0.072 }] },
+  confirm: { notes: [{ frequency: 523.25, duration: 0.065, peak: 0.078 }, { frequency: 659.25, offset: 0.043, duration: 0.075, peak: 0.084 }, { frequency: 783.99, offset: 0.09, duration: 0.095, peak: 0.09 }] },
+  back: { notes: [{ frequency: 554.37, duration: 0.06, peak: 0.068 }, { frequency: 415.3, offset: 0.044, duration: 0.08, peak: 0.074 }] },
+  dismiss: { notes: [{ frequency: 493.88, duration: 0.055, peak: 0.064 }, { frequency: 369.99, offset: 0.04, duration: 0.07, peak: 0.068 }] },
+  play: { notes: [{ frequency: 392, duration: 0.07, peak: 0.074 }, { frequency: 523.25, offset: 0.05, duration: 0.095, peak: 0.084 }] },
+  pause: { notes: [{ frequency: 493.88, duration: 0.048, peak: 0.07 }, { frequency: 493.88, offset: 0.064, duration: 0.06, peak: 0.074 }] },
+  forward: { notes: [{ frequency: 493.88, duration: 0.05, peak: 0.07 }, { frequency: 659.25, offset: 0.035, duration: 0.07, peak: 0.078 }] },
+  rewind: { notes: [{ frequency: 659.25, duration: 0.05, peak: 0.07 }, { frequency: 493.88, offset: 0.035, duration: 0.07, peak: 0.078 }] },
+  edit: { notes: [{ frequency: 440, duration: 0.06, peak: 0.066 }, { frequency: 587.33, offset: 0.045, duration: 0.08, peak: 0.074 }] },
+  danger: { notes: [{ frequency: 329.63, duration: 0.075, peak: 0.07 }, { frequency: 246.94, offset: 0.052, duration: 0.1, peak: 0.078 }] },
 };
 
 export const railProfiles = [
@@ -19,6 +29,52 @@ export function clampVolume(value, fallback = 0.82) {
   return Math.min(1, Math.max(0, number));
 }
 
+export function resolveInteractionFeedback({
+  explicit = "",
+  disabled = false,
+  role = "",
+  ariaLabel = "",
+  text = "",
+  className = "",
+  href = "",
+  checked = false,
+} = {}) {
+  if (disabled || explicit === "none") return null;
+  if (explicit && interactionProfiles[explicit]) return explicit;
+  const meaning = `${ariaLabel} ${text} ${className}`.toLowerCase();
+  if (/删除|清除|danger|delete|trash/.test(meaning)) return "danger";
+  if (/后退\s*15|rewind|counterclockwise/.test(meaning)) return "rewind";
+  if (/前进\s*15|快进|forward/.test(meaning)) return "forward";
+  if (/暂停|pause/.test(meaning)) return "pause";
+  if (/播放|继续|play/.test(meaning)) return "play";
+  if (/返回|back/.test(meaning)) return "back";
+  if (/关闭|取消|收起|dismiss|close/.test(meaning)) return "dismiss";
+  if (/编辑|edit|pencil/.test(meaning)) return "edit";
+  if (/保存|确认|完成|开始|进入|消散|试听|confirm|primary|ignite/.test(meaning)) return "confirm";
+  if (role === "switch") return checked ? "selectOff" : "selectOn";
+  if (role === "tab" || role === "option" || /segmented|setting-choice/.test(meaning)) return "selectOn";
+  if (href || /persistent-tabs|menu-links|knowledge-link/.test(meaning)) return "navigate";
+  return "soft";
+}
+
+export function getFeedbackHapticDuration(kind) {
+  return {
+    soft: 7,
+    navigate: 9,
+    selectOn: 11,
+    selectOff: 8,
+    confirm: 16,
+    back: 9,
+    dismiss: 7,
+    play: 10,
+    pause: 8,
+    forward: 9,
+    rewind: 9,
+    edit: 9,
+    danger: 18,
+  }[kind] ?? 8;
+}
+
 let context;
 let output;
 const htmlTonePools = new Map();
@@ -31,9 +87,32 @@ function writeAscii(view, offset, value) {
   for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
 }
 
+function getProfileNotes(profile) {
+  if (profile.notes) return profile.notes.map((note) => ({
+    offset: 0,
+    overtone: 1.5,
+    type: "sine",
+    ...note,
+  }));
+  return [{
+    offset: 0,
+    frequency: profile.frequency,
+    overtone: profile.overtone ?? 1.5,
+    type: profile.type ?? "sine",
+    duration: profile.duration,
+    peak: profile.peak,
+  }];
+}
+
+function getProfileDuration(profile) {
+  return Math.max(...getProfileNotes(profile).map((note) => note.offset + note.duration));
+}
+
 function createToneDataUrl(profile) {
   const sampleRate = 22050;
-  const sampleCount = Math.ceil(sampleRate * (profile.duration + 0.018));
+  const notes = getProfileNotes(profile);
+  const duration = getProfileDuration(profile);
+  const sampleCount = Math.ceil(sampleRate * (duration + 0.018));
   const buffer = new ArrayBuffer(44 + sampleCount * 2);
   const view = new DataView(buffer);
   writeAscii(view, 0, "RIFF");
@@ -48,16 +127,20 @@ function createToneDataUrl(profile) {
   view.setUint16(34, 16, true);
   writeAscii(view, 36, "data");
   view.setUint32(40, sampleCount * 2, true);
-  const attack = 0.012;
   for (let index = 0; index < sampleCount; index += 1) {
     const time = index / sampleRate;
-    const fadeIn = Math.min(1, time / attack);
-    const fadeOut = Math.max(0, 1 - time / profile.duration);
-    const envelope = fadeIn * fadeOut * fadeOut;
-    const fundamental = Math.sin(2 * Math.PI * profile.frequency * time);
-    const overtone = Math.sin(2 * Math.PI * profile.frequency * profile.overtone * time) * 0.28;
-    const amplitude = Math.min(0.48, profile.peak * 4.6);
-    view.setInt16(44 + index * 2, Math.round((fundamental + overtone) / 1.28 * envelope * amplitude * 32767), true);
+    const sample = notes.reduce((sum, note) => {
+      const localTime = time - note.offset;
+      if (localTime < 0 || localTime > note.duration) return sum;
+      const fadeIn = Math.min(1, localTime / 0.012);
+      const fadeOut = Math.max(0, 1 - localTime / note.duration);
+      const envelope = fadeIn * fadeOut * fadeOut;
+      const fundamental = Math.sin(2 * Math.PI * note.frequency * localTime);
+      const overtone = Math.sin(2 * Math.PI * note.frequency * note.overtone * localTime) * 0.24;
+      const amplitude = Math.min(0.42, note.peak * 4.45);
+      return sum + (fundamental + overtone) / 1.24 * envelope * amplitude;
+    }, 0);
+    view.setInt16(44 + index * 2, Math.round(Math.max(-1, Math.min(1, sample)) * 32767), true);
   }
   let binary = "";
   const bytes = new Uint8Array(buffer);
@@ -155,24 +238,27 @@ async function playProfile(profile, volume) {
   if (!audioContext) return false;
   if (audioContext.state !== "running" && !(await unlockFeedbackAudio())) return false;
   const now = audioContext.currentTime;
-  const level = profile.peak * clampVolume(volume);
-  const gain = audioContext.createGain();
-  const primary = audioContext.createOscillator();
-  const overtone = audioContext.createOscillator();
-  primary.type = profile.type;
-  overtone.type = "sine";
-  primary.frequency.setValueAtTime(profile.frequency, now);
-  overtone.frequency.setValueAtTime(profile.frequency * profile.overtone, now);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), now + 0.009);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + profile.duration);
-  primary.connect(gain);
-  overtone.connect(gain);
-  gain.connect(output);
-  primary.start(now);
-  overtone.start(now);
-  primary.stop(now + profile.duration + 0.02);
-  overtone.stop(now + profile.duration + 0.02);
+  getProfileNotes(profile).forEach((note) => {
+    const start = now + note.offset;
+    const level = note.peak * clampVolume(volume);
+    const gain = audioContext.createGain();
+    const primary = audioContext.createOscillator();
+    const overtone = audioContext.createOscillator();
+    primary.type = note.type;
+    overtone.type = "sine";
+    primary.frequency.setValueAtTime(note.frequency, start);
+    overtone.frequency.setValueAtTime(note.frequency * note.overtone, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), start + 0.009);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration);
+    primary.connect(gain);
+    overtone.connect(gain);
+    gain.connect(output);
+    primary.start(start);
+    overtone.start(start);
+    primary.stop(start + note.duration + 0.02);
+    overtone.stop(start + note.duration + 0.02);
+  });
   return true;
 }
 
