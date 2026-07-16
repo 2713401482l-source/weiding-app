@@ -521,7 +521,7 @@ function MeditationPage() {
   };
 
   return (
-    <main className="screen meditation-screen" onClickCapture={closeControlsBeforePageAction}>
+    <main className={`screen meditation-screen ${controlsOpen ? "controls-open" : ""}`} onClickCapture={closeControlsBeforePageAction}>
       <AppHeader title="闭眼冥想室" back />
       <div className="meditation-meta">
         <span>{state.title}</span>

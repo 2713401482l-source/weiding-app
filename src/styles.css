@@ -1041,6 +1041,7 @@ body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:var
 
 /* Meditation controls dismiss before the full-screen play gesture resumes. */
 .meditation-screen .immersive-control-area{transform:translateY(-18px)}
+.meditation-screen.controls-open .affirmation-stage:active{opacity:1}
 
 /* Time flow — one-line memory summaries with a quiet full-detail layer. */
 .records-screen .record-list{
